@@ -16,8 +16,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('Checking...');
   const navigate = useNavigate();
   const { login } = useAuth();
+
+  React.useEffect(() => {
+    axios.get('/api/health')
+      .then(() => setBackendStatus('Connected'))
+      .catch((err) => setBackendStatus(`Offline (${err.message})`));
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -110,8 +117,9 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-      <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5 }}>
-        v1.0.5-render-connected
+      <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5, textAlign: 'right' }}>
+        Server: {backendStatus}<br />
+        v1.0.6-sync-fix
       </div>
     </div>
   );
