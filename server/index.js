@@ -170,11 +170,9 @@ app.post('/api/auth/login', (req, res) => {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      // Check if already logged in (skip for admin if you want admin to be multi-session, but let's apply to all or check role)
-      // Usually admins might need multiple sessions, but per request "user can't able to login again".
-      // Let's enforce for 'user' role primarily, or everyone. 
-      // The request says "when a user logs in...". 
-      if (user.is_logged_in === 1) {
+      // Check if already logged in (Single Session Enforcement)
+      // Exempt administrators from this restriction as requested
+      if (user.role !== 'admin' && user.is_logged_in === 1) {
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
 
