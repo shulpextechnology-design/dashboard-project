@@ -1,0 +1,1 @@
+$(".account-bar__item--user").css("display", "none");

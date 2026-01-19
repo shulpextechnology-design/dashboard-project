@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+    <meta charset="UTF-8">
+    <style>
+      *{
+        margin: 0;
+        padding: 2px;
+      }
+      body{
+        background:rgb(255, 255, 255);
+        border-radius: 10px;
+        font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+      }
+      .container{
+        width: 300px;
+        background:rgb(255, 255, 255);
+      }
+      .title{
+        padding: 0px 0px 5px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .title .icon{
+        display: none !important;
+    width: 24px;
+        height: 24px;
+      }
+      .title .title-text{
+        margin-left: 10px;
+        font-size: 12px;
+      }
+      .author{
+      display: none !important; 
+        margin-bottom: 10px;
+        font-size: 12px;
+        text-align: center;
+      }
+      .menu-list .menu-item{
+        padding: 10px 20px;
+    font-size: 24px;
+        text-align: center;
+        border-top: 0px solid #ddd;
+        cursor: pointer;
+      }
+      .menu-list .menu-item:hover{
+        background:rgb(255, 255, 255);
+      }
+      .hidden{
+        display: none !important;
+      }
+      .copy_success{
+        position: fixed;
+        display: flex;
+        top: 0;
+        left: 0;
+        width: 60%;
+        height: 100%;
+        background: white;
+        align-items: center;
+        justify-content: center;
+      }
+      .copy_success .text{
+        font-size: 14px;
+        color: black;
+        text-align: center;
+      }
+      .introduction{
+        border-top: 1px solid #ddd;
+        padding: 10px 20px;
+        font-size: 12px;
+      }
+      .introduction .warn{
+        color: #f50000;
+        font-style: normal;
+      }
+      .button_se{
+        background:#1960DE;
+        color:white;
+        font-family: 'Montserrat', sans-serif;
+        font-weight: light;
+        font-size: 16px;
+        padding: 8px 20px;
+        border:0px solid blue;
+        border-radius: 4px;
+
+      }
+      .button_se:hover{
+        background: #FFFFFF;
+        color: rgb(25, 96, 222);
+        font-weight: light;
+        box-shadow: 0px 0px 10px 1px rgba(0, 0, 0, 0.199);
+
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="clipboard" class="hidden"></textarea>
+    <div class="container">
+      <center><img src="Tools.jpg" width="50%" height="60px" ></center>
+
+      <div class="menu-list"><center>
+        <img width="64" height="64" weight="20px" src="be1.gif"/><br>
+        <div style="color:rgb(22, 22, 22); font-family: 'Poppins', sans-serif; font-size: 14px; font-weight:bold; line-height: 1.6rem; padding: 6px; ">Click on the Button Below to Get Redirected to Your Purchased tool</div><br>
+      
+	
+        <div class="menu-item" id="id_session_paste"><button class="button_se">Click to Access</button></center></div>
+      </div><center>
+      <div style="color:rgb(24, 24, 24); font-family: 'Poppins', sans-serif; font-size: 10px;  padding: 6px; border-radius: 5px; ">( This is our Official Extension created by premium tools shop )</center></div><br>
+      <div id="copy_success" class="copy_success hidden">
+      </div><center>
+        <div style="color:rgb(24, 24, 24); font-family: 'Poppins', sans-serif;  font-size: 10px; font-weight:bold; padding: 0px; border-radius: 5px; "> &copy; <?php echo date ('Y'); ?> <a href="https://premiumtools.shop" target="_blank" >Premium tools shop</a> 2022 brand seo tools</div></center></div><br>
+        <div id="copy_success" class="copy_success hidden">
+    </div>
+    <script type="text/javascript" src="lib/jquery-v3.3.1.min.js"></script>
+    <script type="text/javascript" src="popup.js"></script>
+  </body>
+</html>

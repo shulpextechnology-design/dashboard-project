@@ -1,0 +1,1 @@
+$(".account-tooltip").remove();

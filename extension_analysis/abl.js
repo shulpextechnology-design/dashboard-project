@@ -1,0 +1,1 @@
+$("#menu-item-19").remove();

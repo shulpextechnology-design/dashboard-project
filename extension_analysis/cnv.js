@@ -1,0 +1,22 @@
+$(".ok2g_v2i6KAtSX08ySuv7").remove();
+$(".pvf_dg.mRLVxw").remove();
+$(".R3lH9w.mRLVxw").remove();
+$("._1cYWFA").remove();
+$('a[href="/learn/design-school"]').remove();
+$('a[href="/teams"]').remove();
+$("._2wrQ3QQxMpzu105bjNfRim").remove();
+$("._2k57_GeORGeXMRz2wk-qNs").remove();
+$("._23f99zyGZtlDWreJ5dNkE").remove();
+$("._2bpGdX5wP_sxV1BblwpVu8").remove();
+$('body').mouseover(function() {
+$(".ok2g_v2i6KAtSX08ySuv7").remove();
+$(".pvf_dg.mRLVxw").remove();
+$(".R3lH9w.mRLVxw").remove();
+$("._1cYWFA").remove();
+$('a[href="/learn/design-school"]').remove();
+$('a[href="/teams"]').remove();
+$("._2wrQ3QQxMpzu105bjNfRim").remove();
+$("._2k57_GeORGeXMRz2wk-qNs").remove();
+$("._2bpGdX5wP_sxV1BblwpVu8").remove();
+$("._23f99zyGZtlDWreJ5dNkE").remove();
+ });
