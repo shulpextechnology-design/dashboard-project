@@ -13,13 +13,14 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
+const BACKEND_VERSION = 'v1.0.7-admin-fix';
 
 app.use(cors());
 app.use(express.json());
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
+  res.json({ status: 'ok', message: 'Server is running', version: BACKEND_VERSION });
 });
 
 // --- File Upload Setup ---
@@ -183,9 +184,9 @@ app.post('/api/auth/login', (req, res) => {
       }
 
       // Check if already logged in (Single Session Enforcement)
-      // Exempt administrators from this restriction as requested
-      console.log(`Login attempt for ${user.username} (Role: ${user.role}, LoggedIn: ${user.is_logged_in})`);
-      if (user.role !== 'admin' && user.is_logged_in === 1) {
+      // Robust exemption: Check role OR hardcoded 'admin' username to be safe
+      console.log(`Login debug: ${user.username} role is [${user.role}], logged_in is ${user.is_logged_in}`);
+      if (user.username !== 'admin' && user.role !== 'admin' && user.is_logged_in === 1) {
         console.log(`Blocking login for ${user.username} - already logged in`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }

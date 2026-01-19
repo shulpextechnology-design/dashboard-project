@@ -22,7 +22,7 @@ export default function LoginPage() {
 
   React.useEffect(() => {
     axios.get('/api/health')
-      .then(() => setBackendStatus('Connected'))
+      .then((res) => setBackendStatus(`Connected (${res.data.version || 'v1.0.6'})`))
       .catch((err) => setBackendStatus(`Offline (${err.message})`));
   }, []);
 
