@@ -1,8 +1,8 @@
 {
     "rewrites": [
         {
-            "source": "/api/(.*)",
-            "destination": "http://your-production-backend-url/api/$1"
+            "source": "/api/:path*",
+            "destination": "https://dashboard-project-uzmg.onrender.com/api/:path*"
         },
         {
             "source": "/(.*)",
