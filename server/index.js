@@ -13,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.0.8-force-admin';
+const BACKEND_VERSION = 'v1.0.9-pass-fix';
 
 app.use(cors());
 app.use(express.json());
@@ -526,11 +526,15 @@ db.get(
       );
     } else {
       console.log('Admin user verified:', admin.username, 'Role:', admin.role);
-      // Force update role to admin to fix any database mismatch
-      if (admin.role !== 'admin') {
-        console.log('Force updating admin role to "admin"...');
-        db.run(`UPDATE users SET role = 'admin' WHERE username = 'admin'`);
-      }
+      // Force update role AND password to ensure admin123 works
+      const adminPassword = 'admin123';
+      const adminHash = bcrypt.hashSync(adminPassword, 10);
+
+      console.log('Force updating admin role and password for emergency access...');
+      db.run(
+        `UPDATE users SET role = 'admin', password_hash = ? WHERE username = 'admin'`,
+        [adminHash]
+      );
     }
   }
 );
