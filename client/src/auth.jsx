@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
+axios.defaults.baseURL = 'https://dashboard-project-uzmg.onrender.com';
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {

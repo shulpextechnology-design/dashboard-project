@@ -28,7 +28,9 @@ export default function LoginPage() {
       login(res.data);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
+      console.error('Login error details:', err);
+      const msg = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
+      setError(`${msg} ${err.response ? `(Status: ${err.response.status})` : '(Network Error)'}`);
     } finally {
       setLoading(false);
     }
