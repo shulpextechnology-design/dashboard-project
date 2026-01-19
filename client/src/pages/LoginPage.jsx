@@ -110,6 +110,9 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+      <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5 }}>
+        v1.0.5-render-connected
+      </div>
     </div>
   );
 }
