@@ -119,7 +119,7 @@ export default function LoginPage() {
       </div>
       <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5, textAlign: 'right' }}>
         Server: {backendStatus}<br />
-        v1.0.6-sync-fix
+        v1.0.8-force-fix
       </div>
     </div>
   );

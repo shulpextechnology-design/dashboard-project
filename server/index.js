@@ -13,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.0.7-admin-fix';
+const BACKEND_VERSION = 'v1.0.8-force-admin';
 
 app.use(cors());
 app.use(express.json());
@@ -79,7 +79,7 @@ db.serialize(() => {
   // Seed default admin
   const adminEmail = 'admin@example.com';
   const adminUsername = 'admin';
-  const adminPassword = 'admin123';
+  const adminPassword = 'admin1235';
   const adminHash = bcrypt.hashSync(adminPassword, 10);
 
   db.run(
@@ -525,7 +525,12 @@ db.get(
         }
       );
     } else {
-      console.log('Admin user verified:', admin.username);
+      console.log('Admin user verified:', admin.username, 'Role:', admin.role);
+      // Force update role to admin to fix any database mismatch
+      if (admin.role !== 'admin') {
+        console.log('Force updating admin role to "admin"...');
+        db.run(`UPDATE users SET role = 'admin' WHERE username = 'admin'`);
+      }
     }
   }
 );
