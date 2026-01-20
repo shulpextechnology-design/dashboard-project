@@ -172,11 +172,13 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Check if already logged in (Single Session Enforcement)
     // Robust exemption: Check role OR hardcoded 'admin' username to be safe
-    const isAdmin = (user.role && user.role.toLowerCase().trim() === 'admin') ||
-      (user.username && user.username.toLowerCase().trim() === 'admin');
+    const dbUsername = String(user.username || '').toLowerCase().trim();
+    const dbRole = String(user.role || '').toLowerCase().trim();
+    const isAdmin = dbUsername === 'admin' || dbRole === 'admin';
 
-    console.log(`Login debug: ${user.username} role is [${user.role}], logged_in is ${user.is_logged_in}`);
-    if (!isAdmin && user.is_logged_in === 1) {
+    console.log(`Login debug: ${dbUsername} | role: ${dbRole} | isAdmin: ${isAdmin} | is_logged_in: ${user.is_logged_in}`);
+
+    if (!isAdmin && Number(user.is_logged_in) === 1) {
       console.log(`Blocking login for ${user.username} - already logged in`);
       return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
     }
