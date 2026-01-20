@@ -99,6 +99,13 @@ async function initDb() {
         args: [adminEmail, adminUsername, adminHash]
       });
       console.log('Default admin user created');
+    } else {
+      // Force admin role if user exists but has wrong role
+      await db.execute({
+        sql: `UPDATE users SET role = 'admin' WHERE username = ?`,
+        args: [adminUsername]
+      });
+      console.log('Admin user role verified/updated');
     }
 
     // Seed default Helium 10 session token
@@ -171,12 +178,15 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Check if already logged in (Single Session Enforcement)
-    // Robust exemption: Check role OR hardcoded 'admin' username to be safe
+    // Robust exemption: Check input credentials, role AND username
+    const inputId = String(emailOrUsername || '').toLowerCase().trim();
     const dbUsername = String(user.username || '').toLowerCase().trim();
     const dbRole = String(user.role || '').toLowerCase().trim();
-    const isAdmin = dbUsername === 'admin' || dbRole === 'admin';
 
-    console.log(`Login debug: ${dbUsername} | role: ${dbRole} | isAdmin: ${isAdmin} | is_logged_in: ${user.is_logged_in}`);
+    // Admin if input is 'admin' OR if database says role/username is 'admin'
+    const isAdmin = inputId === 'admin' || inputId === 'admin@example.com' || dbUsername === 'admin' || dbRole === 'admin';
+
+    console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}]`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       console.log(`Blocking login for ${user.username} - already logged in`);
