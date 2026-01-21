@@ -31,13 +31,17 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await axios.post('/api/auth/login', { emailOrUsername, password });
+      const res = await axios.post('/api/auth/login', { emailOrUsername, password }, { timeout: 15000 });
       login(res.data);
       navigate('/');
     } catch (err) {
       console.error('Login error details:', err);
-      const msg = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
-      setError(`${msg} ${err.response ? `(Status: ${err.response.status})` : '(Network Error)'}`);
+      if (err.code === 'ECONNABORTED') {
+        setError('Server timeout. Please try again later.');
+      } else {
+        const msg = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
+        setError(`${msg} ${err.response ? `(Status: ${err.response.status})` : '(Network Error)'}`);
+      }
     } finally {
       setLoading(false);
     }

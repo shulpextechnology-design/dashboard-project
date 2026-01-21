@@ -178,7 +178,7 @@ export default function Helium10Page() {
             {clicked ? (
               <>
                 <CheckCircle2 size={20} />
-                Token Copied - Now Click Extension
+                Token Copied - Just Click on Extension
               </>
             ) : (
               <>
@@ -188,12 +188,7 @@ export default function Helium10Page() {
             )}
           </button>
 
-          {copyStatus === 'success' && (
-            <div className="success-banner-inline">
-              <CheckCircle2 size={16} />
-              Encrypted session successfully copied!
-            </div>
-          )}
+          {copyStatus === 'success' && null}
 
           {sessionError && (
             <div className="error-banner-inline">
