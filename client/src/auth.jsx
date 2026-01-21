@@ -21,7 +21,15 @@ export function AuthProvider({ children }) {
         if (stored) {
           const parsed = JSON.parse(stored);
           const now = Date.now();
-          const lastActivity = parsed.lastActivity || 0;
+          // Fail-open: If lastActivity is missing/invalid, treat as active and repair it.
+          let lastActivity = parsed.lastActivity || 0;
+
+          // If we have a token but no timestamp, assume it's valid and start tracking now.
+          if (lastActivity === 0) {
+            console.warn('[AuthDebug] Found token without timestamp. Repairing session.');
+            lastActivity = now;
+          }
+
           const timeSinceLastActivity = now - lastActivity;
 
           console.log('[AuthDebug] Checking session:', {
@@ -32,15 +40,13 @@ export function AuthProvider({ children }) {
             isValid: timeSinceLastActivity < SESSION_EXPIRY
           });
 
-          // Check if session has expired (more than 5 mins since last activity)
-          // Ensure lastActivity exists to avoid immediate logout on malformed data
-          if (lastActivity > 0 && timeSinceLastActivity > SESSION_EXPIRY) {
+          // Only logout if STRICTLY expired
+          if (timeSinceLastActivity > SESSION_EXPIRY) {
             console.warn('[AuthDebug] Session expired. Logging out.', { timeSinceLastActivity });
             localStorage.removeItem('auth');
           } else {
-            console.log('[AuthDebug] Session valid. Recovering user:', parsed.user?.username);
+            console.log('[AuthDebug] Session valid/repaired. Recovering user:', parsed.user?.username);
 
-            // Sync axios header immediately
             if (parsed.token) {
               axios.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
             }
@@ -50,7 +56,7 @@ export function AuthProvider({ children }) {
               token: parsed.token,
             });
 
-            // Update timestamp to keep it alive (Sliding Window)
+            // Refresh timestamp (Sliding Window)
             parsed.lastActivity = now;
             localStorage.setItem('auth', JSON.stringify(parsed));
           }
@@ -59,9 +65,8 @@ export function AuthProvider({ children }) {
         }
       } catch (error) {
         console.error('[AuthDebug] Init error:', error);
-        // On error, do not clear immediately unless sure it's corrupt.
-        // But if parse fails, it IS corrupt.
-        localStorage.removeItem('auth');
+        // Do NOT clear auth on error unless we are sure. 
+        // Better to let the user try logging in again manually if it's broken.
       } finally {
         setLoading(false);
       }
