@@ -35,7 +35,7 @@ const Sidebar = ({ logout, user }) => {
                 <div className="logo-icon" style={{ background: '#0b9d86', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
                     T
                 </div>
-                INDIA Toolsbuy
+                Bharat Tools Hub
             </div>
 
             <nav className="sidebar-nav">

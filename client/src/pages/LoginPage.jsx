@@ -49,7 +49,7 @@ export default function LoginPage() {
         <div className="visual-content">
           <div className="visual-logo">
             <ShieldCheck size={48} color="white" />
-            <span>INDIA Toolsbuy</span>
+            <span>Bharat Tools Hub</span>
           </div>
           <h1>Empower Your E-commerce Journey</h1>
           <p>Access premium tools and analytics to scale your business with ease.</p>

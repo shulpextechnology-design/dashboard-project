@@ -1,4 +1,4 @@
-# INDIA Toolsbuy Dashboard
+# Bharat Tools Hub Dashboard
 
 This project is a dashboard application with a client extensions management system.
 
