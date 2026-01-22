@@ -35,6 +35,7 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [syncSecret, setSyncSecret] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active', 'expired', or 'today'
+  const [syncStatus, setSyncStatus] = useState({ message: 'Loading...', lastSuccess: null, lastError: null, isSyncing: false });
 
   const loadUsers = async () => {
     try {
@@ -67,10 +68,32 @@ export default function AdminPage() {
     }
   };
 
+  const loadSyncStatus = async () => {
+    try {
+      const res = await axios.get('/api/admin/sync-debug');
+      setSyncStatus(res.data);
+    } catch (e) {
+      console.error('Failed to load sync status', e);
+    }
+  };
+
+  const handleManualSync = async () => {
+    try {
+      setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Triggering...' }));
+      await axios.post('/api/admin/sync-trigger');
+      setTimeout(loadSyncStatus, 2000); // Wait 2s for sync to start/finish
+    } catch (e) {
+      alert('Failed to trigger sync: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
   useEffect(() => {
     loadUsers();
     loadHeliumSession();
     loadSyncSecret();
+    loadSyncStatus();
+    const interval = setInterval(loadSyncStatus, 30000); // Update status every 30s
+    return () => clearInterval(interval);
   }, []);
 
   const handleCreate = async (e) => {
@@ -284,11 +307,43 @@ export default function AdminPage() {
         <section className="admin-card-v2">
           <div className="card-header-v2">
             <Zap size={20} />
-            <h2>Auto-Sync Setup</h2>
+            <h2>Background Sync Control</h2>
           </div>
           <div className="admin-form-v2">
+            <div className="sync-status-v2" style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Server Status:</span>
+                <span style={{
+                  fontSize: '11px',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: syncStatus.message === 'Success' ? '#dcfce7' : '#fee2e2',
+                  color: syncStatus.message === 'Success' ? '#166534' : '#ef4444'
+                }}>
+                  {syncStatus.message}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>
+                <div>Last Success: {syncStatus.lastSuccess ? new Date(syncStatus.lastSuccess).toLocaleString() : 'Never'}</div>
+                {syncStatus.lastError && (
+                  <div style={{ color: '#ef4444', marginTop: '4px' }}>Error: {syncStatus.lastError}</div>
+                )}
+              </div>
+            </div>
+
+            <button
+              className="admin-submit-btn"
+              onClick={handleManualSync}
+              disabled={syncStatus.isSyncing}
+              style={{ background: '#0b9d86', marginBottom: '16px' }}
+            >
+              {syncStatus.isSyncing ? 'Syncing...' : 'Force Sync Now'}
+            </button>
+
+            <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '16px 0' }} />
+
             <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-              Automate Helium 10 updates from the original project. Use this script in <strong>Tampermonkey</strong> or as a <strong>Bookmarklet</strong> on the source page.
+              Automate Helium 10 updates from the original project manually if background sync fails.
             </p>
 
             <div className="sync-info-box-v2">

@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { createClient } = require('@libsql/client');
+const { createClient } = require('@libsql/client/http');
 const path = require('path');
 const https = require('https');
 const multer = require('multer');
@@ -16,7 +16,14 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.1.2-cloud-sync';
+const BACKEND_VERSION = 'v1.1.3-sync-debug';
+
+let lastSyncStatus = {
+  lastSuccess: null,
+  lastError: null,
+  message: 'Worker not started',
+  isSyncing: false
+};
 
 // Database setup (Turso Cloud SQLite)
 const db = createClient({
@@ -408,6 +415,20 @@ app.put('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, re
   }
 });
 
+// Sync Debug & Trigger
+app.get('/api/admin/sync-debug', authMiddleware, adminOnly, (req, res) => {
+  res.json(lastSyncStatus);
+});
+
+app.post('/api/admin/sync-trigger', authMiddleware, adminOnly, async (req, res) => {
+  if (global.triggerBackgroundSync) {
+    global.triggerBackgroundSync();
+    res.json({ message: 'Sync triggered' });
+  } else {
+    res.status(500).json({ message: 'Background worker not initialized' });
+  }
+});
+
 // --- Public: Automated token sync ---
 app.post('/api/helium10-sync', async (req, res) => {
   const { sessionData, secret } = req.body;
@@ -537,16 +558,19 @@ async function startBackgroundSync() {
   const client = wrapper(axios.create({ jar }));
 
   async function performSync() {
+    if (lastSyncStatus.isSyncing) return;
+    lastSyncStatus.isSyncing = true;
+    lastSyncStatus.message = 'Syncing...';
+
     console.log('[BackgroundSync] Starting automated synchronization...');
     try {
       // 1. GET login page to capture cookies and attempt_id
-      const loginPageRes = await client.get(LOGIN_URL);
+      const loginPageRes = await client.get(LOGIN_URL, { timeout: 10000, responseType: 'text' });
       const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
       const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
       if (!attemptId) {
-        console.error('[BackgroundSync] Failed to find login_attempt_id');
-        return;
+        throw new Error('Failed to find login_attempt_id. Source site might have changed layout.');
       }
 
       // 2. POST login credentials
@@ -556,17 +580,17 @@ async function startBackgroundSync() {
       formData.append('login_attempt_id', attemptId);
 
       await client.post(LOGIN_URL, formData.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 10000
       });
 
       // 3. GET target page with session token
-      const contentPageRes = await client.get(SOURCE_URL);
+      const contentPageRes = await client.get(SOURCE_URL, { timeout: 10000, responseType: 'text' });
       const tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
       const token = tokenMatch ? tokenMatch[1] : null;
 
       if (!token) {
-        console.error('[BackgroundSync] Failed to extract token from page');
-        return;
+        throw new Error('Failed to extract token from page. Please check if account has access to the content.');
       }
 
       // 4. Update Database (Update the existing record at ID 1)
@@ -578,11 +602,20 @@ async function startBackgroundSync() {
         args: [token.trim(), now]
       });
 
+      lastSyncStatus.lastSuccess = new Date().toISOString();
+      lastSyncStatus.lastError = null;
+      lastSyncStatus.message = 'Success';
       console.log('[BackgroundSync] ✅ Successfully synced token at:', new Date().toLocaleString());
     } catch (err) {
+      lastSyncStatus.lastError = err.message;
+      lastSyncStatus.message = 'Error: ' + err.message;
       console.error('[BackgroundSync] ❌ Sync error:', err.message);
+    } finally {
+      lastSyncStatus.isSyncing = false;
     }
   }
+
+  global.triggerBackgroundSync = performSync;
 
   // Perform initial sync on startup
   setTimeout(performSync, 5000); // Wait 5s for server to settle

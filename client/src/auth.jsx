@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
-axios.defaults.baseURL = 'https://dashboard-project-uzmg.onrender.com';
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '';
 
 const AuthContext = createContext(null);
 
