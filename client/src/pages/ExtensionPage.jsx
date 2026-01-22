@@ -101,7 +101,7 @@ const ExtensionPage = () => {
                             <div className="step-number">5</div>
                             <div className="step-content">
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    📂 Select the extracted folder
+                                    📂 Select the extraction folder
                                 </span>
                             </div>
                         </div>
@@ -117,7 +117,7 @@ const ExtensionPage = () => {
                             <div className="step-number">7</div>
                             <div className="step-content">
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    🚀 Download the official helium 10 extracted <a href="https://chromewebstore.google.com/detail/helium-10-for-amazon-sell/njmehopjdpcckochcggncklnlmikcbnb?refid=bingshortanswer" target="_blank" rel="noopener noreferrer">click here</a>
+                                    🚀 Download the official helium 10 extraction <a href="https://chromewebstore.google.com/detail/helium-10-for-amazon-sell/njmehopjdpcckochcggncklnlmikcbnb?refid=bingshortanswer" target="_blank" rel="noopener noreferrer">click here</a>
                                 </span>
                             </div>
                         </div>
