@@ -54,7 +54,7 @@ const ExtensionPage = () => {
 
             <div className="info-banner">
                 <AlertTriangle size={20} color="#f59e0b" />
-                <span><strong>Important:</strong> Our extension won't work with other extensions. Please remove them or use a fresh Chrome profile.</span>
+                <span><strong>Important:</strong> Our extension won't work with other extensions. Please remove them or use a fresh browser profile.</span>
             </div>
 
             <div className="installation-grid">
@@ -77,7 +77,7 @@ const ExtensionPage = () => {
                             <div className="step-number">2</div>
                             <div className="step-content">
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    🌐 Open chrome://extensions/
+                                    🌐 Open edge://extensions/
                                 </span>
                             </div>
                         </div>
