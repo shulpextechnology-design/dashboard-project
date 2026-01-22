@@ -79,9 +79,19 @@ export default function AdminPage() {
 
   const handleManualSync = async () => {
     try {
-      setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Triggering...' }));
+      setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
       await axios.post('/api/admin/sync-trigger');
-      setTimeout(loadSyncStatus, 2000); // Wait 2s for sync to start/finish
+
+      // Fast Polling: Check status every 500ms for up to 5 seconds
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        const res = await axios.get('/api/admin/sync-debug');
+        setSyncStatus(res.data);
+        attempts++;
+        if (!res.data.isSyncing || attempts > 10) {
+          clearInterval(poll);
+        }
+      }, 500);
     } catch (e) {
       alert('Failed to trigger sync: ' + (e.response?.data?.message || e.message));
     }

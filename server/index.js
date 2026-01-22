@@ -564,36 +564,47 @@ async function startBackgroundSync() {
 
     console.log('[BackgroundSync] Starting automated synchronization...');
     try {
-      // 1. GET login page to capture cookies and attempt_id
-      const loginPageRes = await client.get(LOGIN_URL, { timeout: 10000, responseType: 'text' });
-      const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
-      const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
+      // Step A: "Ultra-Fast" Try - Attempt direct extraction with existing cookies
+      console.log('[BackgroundSync] Attempting direct extraction (Session Reuse)...');
+      let contentPageRes = await client.get(SOURCE_URL, { timeout: 5000, responseType: 'text' });
+      let tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
+      let token = tokenMatch ? tokenMatch[1] : null;
 
-      if (!attemptId) {
-        throw new Error('Failed to find login_attempt_id. Source site might have changed layout.');
+      // If token not found, session might be expired. Proceed to full login flow.
+      if (!token) {
+        console.log('[BackgroundSync] Session expired or invalid. Performing full login flow...');
+
+        // 1. GET login page to capture cookies and attempt_id
+        const loginPageRes = await client.get(LOGIN_URL, { timeout: 8000, responseType: 'text' });
+        const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
+        const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
+
+        if (!attemptId) {
+          throw new Error('Failed to find login_attempt_id. Source site layout might have changed.');
+        }
+
+        // 2. POST login credentials
+        const formData = new URLSearchParams();
+        formData.append('amember_login', CREDENTIALS.amember_login);
+        formData.append('amember_pass', CREDENTIALS.amember_pass);
+        formData.append('login_attempt_id', attemptId);
+
+        await client.post(LOGIN_URL, formData.toString(), {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          timeout: 8000
+        });
+
+        // 3. GET target page with session token (Retry extraction after login)
+        contentPageRes = await client.get(SOURCE_URL, { timeout: 8000, responseType: 'text' });
+        tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
+        token = tokenMatch ? tokenMatch[1] : null;
       }
-
-      // 2. POST login credentials
-      const formData = new URLSearchParams();
-      formData.append('amember_login', CREDENTIALS.amember_login);
-      formData.append('amember_pass', CREDENTIALS.amember_pass);
-      formData.append('login_attempt_id', attemptId);
-
-      await client.post(LOGIN_URL, formData.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 10000
-      });
-
-      // 3. GET target page with session token
-      const contentPageRes = await client.get(SOURCE_URL, { timeout: 10000, responseType: 'text' });
-      const tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
-      const token = tokenMatch ? tokenMatch[1] : null;
 
       if (!token) {
-        throw new Error('Failed to extract token from page. Please check if account has access to the content.');
+        throw new Error('Failed to extract token even after login. Check account access.');
       }
 
-      // 4. Update Database (Update the existing record at ID 1)
+      // 4. Update Database
       const now = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO helium10_session (id, session_json, updated_at)
