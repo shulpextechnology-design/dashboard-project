@@ -18,6 +18,38 @@ function PrivateRoute({ children, role }) {
 }
 
 function AppRoutes() {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        background: '#0d1117',
+        color: '#c9d1d9',
+        fontFamily: 'sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="loading-spinner" style={{
+            border: '4px solid rgba(255,255,255,0.1)',
+            borderTop: '4px solid #58a6ff',
+            borderRadius: '50%',
+            width: '40px',
+            height: '40px',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 20px'
+          }}></div>
+          <p>Initialising secure session...</p>
+          <style>{`
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route

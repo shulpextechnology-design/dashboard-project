@@ -5,12 +5,14 @@ axios.defaults.baseURL = 'https://dashboard-project-uzmg.onrender.com';
 
 const AuthContext = createContext(null);
 
-const SESSION_EXPIRY = 5 * 60 * 1000; // 5 minutes
+const SESSION_EXPIRY_DEFAULT = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_EXPIRY_REMEMBER = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export function AuthProvider({ children }) {
   const [authState, setAuthState] = useState({
     user: null,
     token: null,
+    rememberMe: false
   });
   const [loading, setLoading] = useState(true);
 
@@ -30,18 +32,22 @@ export function AuthProvider({ children }) {
             lastActivity = now;
           }
 
+          const rememberMe = parsed.rememberMe || false;
+          const expiryLimit = rememberMe ? SESSION_EXPIRY_REMEMBER : SESSION_EXPIRY_DEFAULT;
+
           const timeSinceLastActivity = now - lastActivity;
 
           console.log('[AuthDebug] Checking session:', {
             now,
             lastActivity,
             timeSinceLastActivity,
-            expiryLimit: SESSION_EXPIRY,
-            isValid: timeSinceLastActivity < SESSION_EXPIRY
+            expiryLimit,
+            rememberMe,
+            isValid: timeSinceLastActivity < expiryLimit
           });
 
           // Only logout if STRICTLY expired
-          if (timeSinceLastActivity > SESSION_EXPIRY) {
+          if (timeSinceLastActivity > expiryLimit) {
             console.warn('[AuthDebug] Session expired. Logging out.', { timeSinceLastActivity });
             localStorage.removeItem('auth');
           } else {
@@ -54,6 +60,7 @@ export function AuthProvider({ children }) {
             setAuthState({
               user: parsed.user,
               token: parsed.token,
+              rememberMe: parsed.rememberMe
             });
 
             // Refresh timestamp (Sliding Window)
@@ -96,17 +103,37 @@ export function AuthProvider({ children }) {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+
+    // Active Activity Tracking (Sliding Window)
+    const updateActivity = () => {
+      const stored = localStorage.getItem('auth');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          parsed.lastActivity = Date.now();
+          localStorage.setItem('auth', JSON.stringify(parsed));
+        } catch (e) { /* ignore */ }
+      }
+    };
+
+    const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    activityEvents.forEach(event => window.addEventListener(event, updateActivity));
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      activityEvents.forEach(event => window.removeEventListener(event, updateActivity));
+    };
   }, []);
 
-  const login = (data) => {
+  const login = (data, rememberMe = false) => {
     const now = Date.now();
-    console.log('[AuthDebug] Logging in. Setting lastActivity:', now);
+    console.log('[AuthDebug] Logging in. Setting lastActivity:', now, 'RememberMe:', rememberMe);
     const authData = {
       ...data,
-      lastActivity: now
+      lastActivity: now,
+      rememberMe: rememberMe
     };
-    setAuthState({ user: data.user, token: data.token });
+    setAuthState({ user: data.user, token: data.token, rememberMe });
     localStorage.setItem('auth', JSON.stringify(authData));
     axios.defaults.headers.common.Authorization = `Bearer ${data.token}`;
   };

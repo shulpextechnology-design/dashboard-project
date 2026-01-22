@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [backendStatus, setBackendStatus] = useState('Checking...');
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -32,7 +33,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await axios.post('/api/auth/login', { emailOrUsername, password }, { timeout: 15000 });
-      login(res.data);
+      login(res.data, rememberMe);
       navigate('/');
     } catch (err) {
       console.error('Login error details:', err);
@@ -99,7 +100,11 @@ export default function LoginPage() {
 
             <div className="form-options">
               <label className="checkbox-container">
-                <input type="checkbox" />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
                 <span className="checkmark"></span>
                 Remember me
               </label>
