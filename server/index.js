@@ -7,6 +7,9 @@ const path = require('path');
 const https = require('https');
 const multer = require('multer');
 const fs = require('fs');
+const axios = require('axios');
+const { wrapper } = require('axios-cookiejar-support');
+const { CookieJar } = require('tough-cookie');
 require('dotenv').config();
 
 const app = express();
@@ -521,12 +524,82 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
   }
 });
 
+// --- Fully Automated Background Sync (Source Site -> Dashboard) ---
+async function startBackgroundSync() {
+  const SOURCE_URL = 'https://members.freelancerservice.site/content/p/id/173/';
+  const LOGIN_URL = 'https://members.freelancerservice.site/login';
+  const CREDENTIALS = {
+    amember_login: 'vigneshsingaravelan@kyda.in',
+    amember_pass: 'vigneshsingaravelan@kyda.in'
+  };
+
+  const jar = new CookieJar();
+  const client = wrapper(axios.create({ jar }));
+
+  async function performSync() {
+    console.log('[BackgroundSync] Starting automated synchronization...');
+    try {
+      // 1. GET login page to capture cookies and attempt_id
+      const loginPageRes = await client.get(LOGIN_URL);
+      const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
+      const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
+
+      if (!attemptId) {
+        console.error('[BackgroundSync] Failed to find login_attempt_id');
+        return;
+      }
+
+      // 2. POST login credentials
+      const formData = new URLSearchParams();
+      formData.append('amember_login', CREDENTIALS.amember_login);
+      formData.append('amember_pass', CREDENTIALS.amember_pass);
+      formData.append('login_attempt_id', attemptId);
+
+      await client.post(LOGIN_URL, formData.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+
+      // 3. GET target page with session token
+      const contentPageRes = await client.get(SOURCE_URL);
+      const tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
+      const token = tokenMatch ? tokenMatch[1] : null;
+
+      if (!token) {
+        console.error('[BackgroundSync] Failed to extract token from page');
+        return;
+      }
+
+      // 4. Update Database (Update the existing record at ID 1)
+      const now = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO helium10_session (id, session_json, updated_at)
+             VALUES (1, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
+        args: [token.trim(), now]
+      });
+
+      console.log('[BackgroundSync] ✅ Successfully synced token at:', new Date().toLocaleString());
+    } catch (err) {
+      console.error('[BackgroundSync] ❌ Sync error:', err.message);
+    }
+  }
+
+  // Perform initial sync on startup
+  setTimeout(performSync, 5000); // Wait 5s for server to settle
+
+  // Schedule every 5 minutes
+  setInterval(performSync, 5 * 60 * 1000);
+}
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log('Default admin credentials:');
   console.log('  Username: admin');
   console.log('  Email: admin@example.com');
   console.log('  Password: admin123');
+
+  // Start the background worker
+  startBackgroundSync();
 });
 
 
