@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import {
   Users,
   UserPlus,
@@ -13,7 +14,8 @@ import {
   UserCheck,
   UserX,
   Timer,
-  Zap
+  Zap,
+  Download
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -248,6 +250,38 @@ export default function AdminPage() {
       alert(err.response?.data?.message || 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDownloadExcel = () => {
+    try {
+      if (users.length === 0) {
+        alert('No user data available to download.');
+        return;
+      }
+
+      // Format data for Excel
+      const excelData = users.map(u => ({
+        'Username': u.username,
+        'Email Address': u.email,
+        'Mobile Number': u.mobile_number || 'N/A',
+        'Role': u.role,
+        'Access Expiry Date': u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'Inactive',
+        'Status': u.is_logged_in ? 'Logged In' : 'Offline'
+      }));
+
+      // Create Worksheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+      // Create Workbook
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+
+      // Generate and download file
+      XLSX.writeFile(workbook, `User_Database_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('Excel Export Error:', err);
+      alert('Failed to generate Excel file.');
     }
   };
 
@@ -550,6 +584,22 @@ export default function AdminPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Users size={20} />
             <h2>User Management</h2>
+            <button
+              className="mgmt-btn"
+              onClick={handleDownloadExcel}
+              style={{
+                background: '#0b9d86',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                fontSize: '13px'
+              }}
+            >
+              <Download size={16} />
+              Download Excel
+            </button>
           </div>
 
           <div className="admin-tabs-v2">

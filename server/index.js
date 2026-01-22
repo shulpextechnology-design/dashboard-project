@@ -26,6 +26,8 @@ let lastSyncStatus = {
 };
 
 // Database setup (Turso Cloud SQLite)
+// NOTE: Data is stored in the Turso Cloud. This ensures persistence across server restarts and redeployments.
+// DO NOT delete the authToken or change the URL unless migrating the database.
 const db = createClient({
   url: 'libsql://dashboard-db-shulpextechnology-design.aws-ap-northeast-1.turso.io',
   authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njg4OTAwODUsImlkIjoiMWJjYTk0ZjctY2M4MS00OGI5LWEyNTQtNmVhOGJlNTRhN2YzIiwicmlkIjoiMGI0YTc4NmUtNjlmOS00OWJiLWIxOTYtZDljZjllMWQzY2YyIn0.o8tpPd4pxTCjMLR6i4jAG3DXb6AEZ986E9StxKNfMOO-EHrecuA89E2BsC0sHMkxd7eAA3Dohw_UOZG_Ic5KAQ'
