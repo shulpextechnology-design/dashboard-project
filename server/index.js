@@ -79,9 +79,18 @@ async function initDb() {
         role TEXT NOT NULL DEFAULT 'user',
         access_expires_at TEXT,
         mobile_number TEXT,
-        is_logged_in INTEGER DEFAULT 0
+        is_logged_in INTEGER DEFAULT 0,
+        is_demo INTEGER DEFAULT 0
       )
     `);
+
+    // Migration: Add is_demo column if it doesn't exist
+    try {
+      await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0');
+      console.log('Migration: is_demo column added');
+    } catch (e) {
+      // Column might already exist
+    }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS helium10_session (
@@ -314,7 +323,7 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 app.get('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
   try {
     const result = await db.execute(
-      `SELECT id, email, username, role, access_expires_at, mobile_number, is_logged_in FROM users WHERE role = 'user'`
+      `SELECT id, email, username, role, access_expires_at, mobile_number, is_logged_in, is_demo FROM users WHERE role = 'user'`
     );
     res.json(result.rows);
   } catch (err) {
@@ -328,7 +337,7 @@ app.get('/api/admin/sync-secret', authMiddleware, adminOnly, (req, res) => {
 });
 
 app.post('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
-  const { email, username, password, months, expiresAt, mobile_number } = req.body;
+  const { email, username, password, months, expiresAt, mobile_number, is_demo } = req.body;
   if (!email || !username || !password) {
     return res.status(400).json({ message: 'Missing fields' });
   }
@@ -349,9 +358,9 @@ app.post('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
 
   try {
     const result = await db.execute({
-      sql: `INSERT INTO users (email, username, password_hash, role, access_expires_at, mobile_number)
-            VALUES (?, ?, ?, 'user', ?, ?)`,
-      args: [email, username, hash, access_expires_at, mobile_number || null]
+      sql: `INSERT INTO users (email, username, password_hash, role, access_expires_at, mobile_number, is_demo)
+            VALUES (?, ?, ?, 'user', ?, ?, ?)`,
+      args: [email, username, hash, access_expires_at, mobile_number || null, is_demo ? 1 : 0]
     });
     res.status(201).json({ id: result.lastInsertRowid ? result.lastInsertRowid.toString() : null });
   } catch (err) {
@@ -370,7 +379,7 @@ app.post('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
 });
 
 app.put('/api/admin/users/:id/access', authMiddleware, adminOnly, async (req, res) => {
-  const { months, expiresAt } = req.body;
+  const { months, expiresAt, is_demo } = req.body;
   const { id } = req.params;
 
   let access_expires_at = null;
@@ -387,9 +396,17 @@ app.put('/api/admin/users/:id/access', authMiddleware, adminOnly, async (req, re
   }
 
   try {
+    let sql = `UPDATE users SET access_expires_at = ? WHERE id = ? AND role = 'user'`;
+    let args = [access_expires_at, id];
+
+    if (is_demo !== undefined) {
+      sql = `UPDATE users SET access_expires_at = ?, is_demo = ? WHERE id = ? AND role = 'user'`;
+      args = [access_expires_at, is_demo ? 1 : 0, id];
+    }
+
     const result = await db.execute({
-      sql: `UPDATE users SET access_expires_at = ? WHERE id = ? AND role = 'user'`,
-      args: [access_expires_at, id]
+      sql,
+      args
     });
     res.json({ updated: result.rowsAffected });
   } catch (err) {

@@ -26,6 +26,7 @@ export default function AdminPage() {
     password: '',
     mobile_number: '',
     months: 1,
+    is_demo: false,
     expiresAt: ''
   });
   const [loading, setLoading] = useState(false);
@@ -36,7 +37,7 @@ export default function AdminPage() {
   const [extensionFile, setExtensionFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [syncSecret, setSyncSecret] = useState('');
-  const [activeTab, setActiveTab] = useState('active'); // 'active', 'expired', or 'today'
+  const [activeTab, setActiveTab] = useState('active'); // 'active', 'expired', 'today', or 'demo'
   const [syncStatus, setSyncStatus] = useState({ message: 'Loading...', lastSuccess: null, lastError: null, isSyncing: false });
   const [syncConfig, setSyncConfig] = useState({
     source_url: '',
@@ -136,9 +137,10 @@ export default function AdminPage() {
         password: form.password,
         mobile_number: form.mobile_number,
         months: Number(form.months),
+        is_demo: form.is_demo,
         expiresAt: form.expiresAt || undefined
       });
-      setForm({ email: '', username: '', password: '', mobile_number: '', months: 1, expiresAt: '' });
+      setForm({ email: '', username: '', password: '', mobile_number: '', months: 1, is_demo: false, expiresAt: '' });
       loadUsers();
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to create user');
@@ -172,7 +174,7 @@ export default function AdminPage() {
     if (!window.confirm('Grant 15 minutes of demo access to this user?')) return;
     try {
       const demoExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      await axios.put(`/api/admin/users/${id}/access`, { expiresAt: demoExpiry });
+      await axios.put(`/api/admin/users/${id}/access`, { expiresAt: demoExpiry, is_demo: true });
       alert('15-minute demo access granted!');
       loadUsers();
     } catch (e) {
@@ -334,7 +336,7 @@ export default function AdminPage() {
                 style={{ background: '#6366f1', margin: 0, flex: 1 }}
                 onClick={() => {
                   const demoTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-                  setForm({ ...form, months: 0, expiresAt: demoTime.slice(0, 16) });
+                  setForm({ ...form, months: 0, expiresAt: demoTime.slice(0, 16), is_demo: true });
                   alert('Form set for 15-minute demo access. Please fill username/email/password and click Create.');
                 }}
               >
@@ -650,6 +652,13 @@ export default function AdminPage() {
               <Timer size={16} />
               Expired Today
             </button>
+            <button
+              className={`admin-tab-btn ${activeTab === 'demo' ? 'active' : ''}`}
+              onClick={() => setActiveTab('demo')}
+            >
+              <Users size={16} />
+              Demo History
+            </button>
           </div>
         </div>
 
@@ -678,6 +687,10 @@ export default function AdminPage() {
                     const expiryDate = new Date(u.access_expires_at);
                     const isSameDay = expiryDate.toDateString() === now.toDateString();
                     return isExpired && isSameDay;
+                  }
+
+                  if (activeTab === 'demo') {
+                    return u.is_demo === 1;
                   }
 
                   return isExpired;
