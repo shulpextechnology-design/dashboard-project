@@ -303,27 +303,86 @@ export default function AdminPage() {
               style={{ background: '#1e293b', marginTop: '16px' }}
               onClick={() => {
                 const script = `
-// --- Tampermonkey Sync Script ---
+// ==UserScript==
+// @name         Helium 10 Auto-Sync (Freelancer Service)
+// @namespace    http://tampermonkey.net/
+// @version      1.2
+// @description  Automatically sync Helium 10 session tokens to your dashboard.
+// @author       Antigravity
+// @match        https://members.freelancerservice.site/content/p/id/173/*
+// @grant        GM_xmlhttpRequest
+// @connect      ${window.location.hostname}
+// ==/UserScript==
+
 (function() {
     'use strict';
+
+    const SYNC_URL = '${window.location.origin}/api/helium10-sync';
+    const SECRET = '${syncSecret}';
+    let lastSyncedToken = '';
+
+    console.log('[Sync] Automatic synchronization started...');
+
     setInterval(async () => {
-        const token = localStorage.getItem('helium10_token') || document.body.innerText.match(/brandseotools\\(created-by-premiumtools\\.shop\\)\\s+([a-zA-Z0-9+/=]+)/)?.[0];
-        if (token && token !== window._lastSyncedToken) {
-            window._lastSyncedToken = token;
-            const res = await fetch('${window.location.origin}/api/helium10-sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionData: token, secret: '${syncSecret}' })
-            });
-            console.log('Token synced automatically:', await res.json());
+        try {
+            // 1. Try to find the 'copyText' variable globally or in script tags
+            let token = window.copyText;
+            
+            if (!token) {
+                const scripts = Array.from(document.querySelectorAll('script'));
+                const targetScript = scripts.find(s => s.textContent.includes('var copyText = "brandseotools'));
+                if (targetScript) {
+                    const match = targetScript.textContent.match(/var copyText = "(.*?)";/);
+                    if (match) token = match[1];
+                }
+            }
+
+            if (token && token !== lastSyncedToken) {
+                console.log('[Sync] New token detected! Sending to dashboard...');
+                
+                GM_xmlhttpRequest({
+                    method: "POST",
+                    url: SYNC_URL,
+                    data: JSON.stringify({ sessionData: token, secret: SECRET }),
+                    headers: { "Content-Type": "application/json" },
+                    onload: function(response) {
+                        const res = JSON.parse(response.responseText);
+                        if (res.saved) {
+                            console.log('[Sync] ✅ Successfully synced with dashboard.');
+                            lastSyncedToken = token;
+                            showSyncStatus("Sync Success: " + new Date().toLocaleTimeString());
+                        } else {
+                            console.error('[Sync] ❌ Sync failed:', res.message);
+                        }
+                    },
+                    onerror: function(err) {
+                        console.error('[Sync] ❌ Network error during sync:', err);
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('[Sync] Error during check:', e);
         }
-    }, 10000);
+    }, 5000);
+
+    function showSyncStatus(msg) {
+        let el = document.getElementById('sync-status-indicator');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'sync-status-indicator';
+            el.style = 'position:fixed;bottom:10px;left:10px;background:#0b9d86;color:white;padding:5px 10px;border-radius:5px;font-size:12px;z-index:9999;box-shadow:0 2px 10px rgba(0,0,0,0.2);font-family:sans-serif;';
+            document.body.appendChild(el);
+        }
+        el.innerText = msg;
+        setTimeout(() => { el.style.opacity = '0.5'; }, 3000);
+        setTimeout(() => { el.style.opacity = '1'; }, 0);
+    }
 })();`.trim();
                 navigator.clipboard.writeText(script);
-                alert('Tampermonkey script copied to clipboard! Paste it into a new Tampermonkey script on your source project.');
+                alert('Advanced Tampermonkey script copied to clipboard! Paste it into a new Tampermonkey script on the source project.');
               }}
             >
-              Copy Auto-Sync Script
+              Copy Advanced Auto-Sync Script
             </button>
           </div>
         </section>
