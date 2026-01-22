@@ -36,6 +36,13 @@ export default function AdminPage() {
   const [syncSecret, setSyncSecret] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active', 'expired', or 'today'
   const [syncStatus, setSyncStatus] = useState({ message: 'Loading...', lastSuccess: null, lastError: null, isSyncing: false });
+  const [syncConfig, setSyncConfig] = useState({
+    source_url: '',
+    login_url: '',
+    amember_login: '',
+    amember_pass: ''
+  });
+  const [syncConfigLoading, setSyncConfigLoading] = useState(false);
 
   const loadUsers = async () => {
     try {
@@ -77,6 +84,15 @@ export default function AdminPage() {
     }
   };
 
+  const loadSyncConfig = async () => {
+    try {
+      const res = await axios.get('/api/admin/sync-config');
+      setSyncConfig(res.data);
+    } catch (e) {
+      console.error('Failed to load sync config', e);
+    }
+  };
+
   const handleManualSync = async () => {
     try {
       setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
@@ -102,6 +118,7 @@ export default function AdminPage() {
     loadHeliumSession();
     loadSyncSecret();
     loadSyncStatus();
+    loadSyncConfig();
     const interval = setInterval(loadSyncStatus, 30000); // Update status every 30s
     return () => clearInterval(interval);
   }, []);
@@ -194,6 +211,19 @@ export default function AdminPage() {
       loadUsers();
     } catch (e) {
       alert(e.response?.data?.message || 'Failed to reset session');
+    }
+  };
+
+  const handleSaveSyncConfig = async (e) => {
+    e.preventDefault();
+    setSyncConfigLoading(true);
+    try {
+      await axios.put('/api/admin/sync-config', syncConfig);
+      alert('Sync configuration updated successfully!');
+    } catch (e) {
+      alert('Failed to update sync config: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setSyncConfigLoading(false);
     }
   };
 
@@ -452,6 +482,67 @@ export default function AdminPage() {
           </div>
         </section>
       </div>
+
+      {/* Sync Source Configuration */}
+      <section className="admin-card-v2 full-width-v2" style={{ marginBottom: '24px' }}>
+        <div className="card-header-v2">
+          <ShieldCheck size={20} />
+          <h2>Sync Source Configuration</h2>
+        </div>
+        <form onSubmit={handleSaveSyncConfig} className="admin-form-v2">
+          <div className="form-row-v2">
+            <div className="form-group-v2">
+              <label>Source Media URL (Page with Token)</label>
+              <input
+                type="url"
+                value={syncConfig.source_url}
+                onChange={(e) => setSyncConfig({ ...syncConfig, source_url: e.target.value })}
+                placeholder="https://members.freelancerservice.site/content/p/id/173/"
+                required
+              />
+            </div>
+            <div className="form-group-v2">
+              <label>Source Login URL</label>
+              <input
+                type="url"
+                value={syncConfig.login_url}
+                onChange={(e) => setSyncConfig({ ...syncConfig, login_url: e.target.value })}
+                placeholder="https://members.freelancerservice.site/login"
+                required
+              />
+            </div>
+          </div>
+          <div className="form-row-v2">
+            <div className="form-group-v2">
+              <label>Source Account Email/Username</label>
+              <input
+                type="text"
+                value={syncConfig.amember_login}
+                onChange={(e) => setSyncConfig({ ...syncConfig, amember_login: e.target.value })}
+                placeholder="vigneshsingaravelan@kyda.in"
+                required
+              />
+            </div>
+            <div className="form-group-v2">
+              <label>Source Account Password</label>
+              <input
+                type="password"
+                value={syncConfig.amember_pass}
+                onChange={(e) => setSyncConfig({ ...syncConfig, amember_pass: e.target.value })}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+          </div>
+          <button type="submit" className="admin-submit-btn-v2" disabled={syncConfigLoading}>
+            {syncConfigLoading ? 'Saving...' : 'Save Configuration'}
+          </button>
+          <div style={{ marginTop: '12px', fontSize: '13px', color: '#666' }}>
+            <AlertCircle size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+            Last updated: {syncConfig.updated_at ? new Date(syncConfig.updated_at).toLocaleString() : 'Never'}
+          </div>
+        </form>
+      </section>
 
       {/* Users Table Card */}
       <section className="admin-card-v2 full-width-v2">

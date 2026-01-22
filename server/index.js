@@ -89,6 +89,34 @@ async function initDb() {
       )
     `);
 
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS sync_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        source_url TEXT NOT NULL,
+        login_url TEXT NOT NULL,
+        amember_login TEXT NOT NULL,
+        amember_pass TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
+    // Seed default sync config if empty
+    const checkSyncConfig = await db.execute('SELECT * FROM sync_config WHERE id = 1');
+    if (checkSyncConfig.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
+             VALUES (1, ?, ?, ?, ?, ?)`,
+        args: [
+          'https://members.freelancerservice.site/content/p/id/173/',
+          'https://members.freelancerservice.site/login',
+          'vigneshsingaravelan@kyda.in',
+          'vigneshsingaravelan@kyda.in',
+          new Date().toISOString()
+        ]
+      });
+      console.log('Default sync config seeded');
+    }
+
     // Reset login status on restart
     await db.execute('UPDATE users SET is_logged_in = 0');
 
@@ -429,6 +457,37 @@ app.post('/api/admin/sync-trigger', authMiddleware, adminOnly, async (req, res) 
   }
 });
 
+app.get('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM sync_config WHERE id = 1');
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
+app.put('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
+  const { source_url, login_url, amember_login, amember_pass } = req.body;
+  const now = new Date().toISOString();
+
+  try {
+    await db.execute({
+      sql: `UPDATE sync_config SET 
+            source_url = ?, 
+            login_url = ?, 
+            amember_login = ?, 
+            amember_pass = ?, 
+            updated_at = ? 
+            WHERE id = 1`,
+      args: [source_url, login_url, amember_login, amember_pass, now]
+    });
+    res.json({ success: true, updatedAt: now });
+  } catch (err) {
+    console.error('Update sync config error:', err);
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
 // --- Public: Automated token sync ---
 app.post('/api/helium10-sync', async (req, res) => {
   const { sessionData, secret } = req.body;
@@ -547,13 +606,6 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
-  const SOURCE_URL = 'https://members.freelancerservice.site/content/p/id/173/';
-  const LOGIN_URL = 'https://members.freelancerservice.site/login';
-  const CREDENTIALS = {
-    amember_login: 'vigneshsingaravelan@kyda.in',
-    amember_pass: 'vigneshsingaravelan@kyda.in'
-  };
-
   const jar = new CookieJar();
   const client = wrapper(axios.create({ jar }));
 
@@ -564,9 +616,18 @@ async function startBackgroundSync() {
 
     console.log('[BackgroundSync] Starting automated synchronization...');
     try {
+      // Fetch latest config from DB
+      const configResult = await db.execute('SELECT * FROM sync_config WHERE id = 1');
+      const config = configResult.rows[0];
+
+      if (!config) {
+        throw new Error('Sync configuration missing in database');
+      }
+
+      const { source_url, login_url, amember_login, amember_pass } = config;
       // Step A: "Ultra-Fast" Try - Attempt direct extraction with existing cookies
       console.log('[BackgroundSync] Attempting direct extraction (Session Reuse)...');
-      let contentPageRes = await client.get(SOURCE_URL, { timeout: 5000, responseType: 'text' });
+      let contentPageRes = await client.get(source_url, { timeout: 5000, responseType: 'text' });
       let tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
       let token = tokenMatch ? tokenMatch[1] : null;
 
@@ -575,7 +636,7 @@ async function startBackgroundSync() {
         console.log('[BackgroundSync] Session expired or invalid. Performing full login flow...');
 
         // 1. GET login page to capture cookies and attempt_id
-        const loginPageRes = await client.get(LOGIN_URL, { timeout: 8000, responseType: 'text' });
+        const loginPageRes = await client.get(login_url, { timeout: 8000, responseType: 'text' });
         const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
         const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
@@ -585,17 +646,17 @@ async function startBackgroundSync() {
 
         // 2. POST login credentials
         const formData = new URLSearchParams();
-        formData.append('amember_login', CREDENTIALS.amember_login);
-        formData.append('amember_pass', CREDENTIALS.amember_pass);
+        formData.append('amember_login', amember_login);
+        formData.append('amember_pass', amember_pass);
         formData.append('login_attempt_id', attemptId);
 
-        await client.post(LOGIN_URL, formData.toString(), {
+        await client.post(login_url, formData.toString(), {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           timeout: 8000
         });
 
         // 3. GET target page with session token (Retry extraction after login)
-        contentPageRes = await client.get(SOURCE_URL, { timeout: 8000, responseType: 'text' });
+        contentPageRes = await client.get(source_url, { timeout: 8000, responseType: 'text' });
         tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
         token = tokenMatch ? tokenMatch[1] : null;
       }
