@@ -176,8 +176,31 @@ function authMiddleware(req, res, next) {
   if (!authHeader) return res.status(401).json({ message: 'Missing token' });
 
   const token = authHeader.split(' ')[1];
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) return res.status(401).json({ message: 'Invalid token' });
+
+    // Strict Access Check: Verify user still has active access in DB
+    if (decoded.role === 'user') {
+      try {
+        const result = await db.execute({
+          sql: 'SELECT access_expires_at FROM users WHERE id = ?',
+          args: [decoded.id]
+        });
+        const user = result.rows[0];
+        if (!user || !user.access_expires_at) {
+          return res.status(403).json({ message: 'Access expired' });
+        }
+        const expires = new Date(user.access_expires_at);
+        if (Number.isNaN(expires.getTime()) || new Date() > expires) {
+          return res.status(403).json({ message: 'Access expired' });
+        }
+      } catch (dbErr) {
+        console.error('Middleware DB check error:', dbErr);
+        // Fail open or closed? Closed is safer for demo/paid access.
+        return res.status(500).json({ message: 'Internal verification error' });
+      }
+    }
+
     req.user = decoded;
     next();
   });

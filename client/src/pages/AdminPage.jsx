@@ -168,6 +168,18 @@ export default function AdminPage() {
     }
   };
 
+  const handleGrantDemo = async (id) => {
+    if (!window.confirm('Grant 15 minutes of demo access to this user?')) return;
+    try {
+      const demoExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await axios.put(`/api/admin/users/${id}/access`, { expiresAt: demoExpiry });
+      alert('15-minute demo access granted!');
+      loadUsers();
+    } catch (e) {
+      alert('Failed to grant demo access');
+    }
+  };
+
   const handleSaveHeliumSession = async (e) => {
     e.preventDefault();
     setHeliumSaving(true);
@@ -314,6 +326,20 @@ export default function AdminPage() {
             <div className="form-row-v2">
               <input type="number" min="0" placeholder="Initial Access Months" value={form.months} onChange={(e) => setForm({ ...form, months: e.target.value })} />
               <input type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+              <button
+                type="button"
+                className="admin-submit-btn"
+                style={{ background: '#6366f1', margin: 0, flex: 1 }}
+                onClick={() => {
+                  const demoTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+                  setForm({ ...form, months: 0, expiresAt: demoTime.slice(0, 16) });
+                  alert('Form set for 15-minute demo access. Please fill username/email/password and click Create.');
+                }}
+              >
+                Set as 15m Demo
+              </button>
             </div>
             <button type="submit" className="admin-submit-btn" disabled={loading}>
               {loading ? 'Processing...' : 'Create User Account'}
@@ -680,6 +706,7 @@ export default function AdminPage() {
                     </td>
                     <td className="action-cell-v2">
                       <button className="mgmt-btn extend-btn" onClick={() => updateAccess(u.id, 1)}>+1 mo</button>
+                      <button className="mgmt-btn" style={{ background: '#6366f1', color: 'white' }} onClick={() => handleGrantDemo(u.id)}>15m Demo</button>
                       <button className="mgmt-btn date-btn" onClick={() => updateAccessDate(u.id, u.access_expires_at)}>Set Date</button>
                       <button className="mgmt-btn" style={{ background: '#f59e0b', color: 'white' }} onClick={() => resetSession(u.id)}>Reset Session</button>
                       <button className="mgmt-btn revoke-btn" onClick={() => updateAccess(u.id, 0)}>Revoke</button>
