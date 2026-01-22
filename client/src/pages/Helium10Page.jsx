@@ -178,7 +178,7 @@ export default function Helium10Page() {
             {clicked ? (
               <>
                 <CheckCircle2 size={20} />
-                Token Copied - Just Click on Extension
+                Just Click on Extension
               </>
             ) : (
               <>
