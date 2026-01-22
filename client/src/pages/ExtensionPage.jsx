@@ -101,6 +101,14 @@ const ExtensionPage = () => {
                             <div className="step-number">5</div>
                             <div className="step-content">
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    📂 Select the extracted folder
+                                </span>
+                            </div>
+                        </div>
+                        <div className="step-item">
+                            <div className="step-number">6</div>
+                            <div className="step-content">
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     ✅ Done! <a href="#">Watch Tutorial</a>
                                 </span>
                             </div>
