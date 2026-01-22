@@ -113,6 +113,14 @@ const ExtensionPage = () => {
                                 </span>
                             </div>
                         </div>
+                        <div className="step-item">
+                            <div className="step-number">7</div>
+                            <div className="step-content">
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    🚀 Download the official helium 10 extracted <a href="https://chromewebstore.google.com/detail/helium-10-for-amazon-sell/njmehopjdpcckochcggncklnlmikcbnb?refid=bingshortanswer" target="_blank" rel="noopener noreferrer">click here</a>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
