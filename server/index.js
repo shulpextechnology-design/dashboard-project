@@ -140,6 +140,11 @@ initDb();
 app.use(cors());
 app.use(express.json());
 
+// Root route
+app.get('/', (req, res) => {
+  res.send('<h1>Freelancer Dashboard API Server</h1><p>The server is running successfully. Please access the dashboard via your Vercel URL.</p>');
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running', version: BACKEND_VERSION, timestamp: new Date().toISOString() });
