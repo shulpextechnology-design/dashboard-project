@@ -162,7 +162,7 @@ async function initDb() {
     // Seed default admin
     const adminEmail = 'admin@example.com';
     const adminUsername = 'admin';
-    const adminPassword = 'admin123';
+    const adminPassword = 'admin1239';
     const adminHash = bcrypt.hashSync(adminPassword, 10);
 
     const checkAdmin = await db.execute({
