@@ -122,9 +122,13 @@ export default function AdminPage() {
     loadSyncSecret();
     loadSyncStatus();
     loadSyncConfig();
-    const interval = setInterval(loadSyncStatus, 30000); // Update status every 30s
+    const interval = setInterval(() => {
+      loadSyncStatus();
+      loadHeliumSession(); // Also refresh the Helium session timestamp
+    }, 30000); // Update status every 30s
     return () => clearInterval(interval);
   }, []);
+
 
   const handleCreate = async (e) => {
     e.preventDefault();
