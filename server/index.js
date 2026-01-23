@@ -18,9 +18,46 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
 const BACKEND_VERSION = 'v1.1.3-sync-debug';
 
-// --- Sync Status Table Initialization ---
-async function initSyncStatus() {
+// --- Database Initialization ---
+async function initDb() {
   try {
+    // 1. Users table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        access_expires_at TEXT,
+        mobile_number TEXT,
+        is_logged_in INTEGER DEFAULT 0,
+        is_demo INTEGER DEFAULT 0
+      )
+    `);
+
+    // 2. Helium 10 session table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS helium10_session (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        session_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
+    // 3. Sync configuration table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS sync_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        source_url TEXT NOT NULL,
+        login_url TEXT NOT NULL,
+        amember_login TEXT NOT NULL,
+        amember_pass TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
+    // 4. Sync status table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS sync_status (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -31,19 +68,48 @@ async function initSyncStatus() {
       )
     `);
 
-    // Seed initial status if empty
+    // Seed/Migrate as needed...
+    // Migration: Add is_demo column (users)
+    try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
+
+    // Reset login status
+    await db.execute('UPDATE users SET is_logged_in = 0');
+    // Reset syncing status
+    await db.execute('UPDATE sync_status SET is_syncing = 0 WHERE id = 1');
+
+    // Seed default admin
+    const adminEmail = 'admin@example.com';
+    const adminUsername = 'admin';
+    const adminPassword = 'admin1239';
+    const adminHash = bcrypt.hashSync(adminPassword, 10);
+    const checkAdmin = await db.execute({ sql: 'SELECT * FROM users WHERE username = ?', args: [adminUsername] });
+    if (checkAdmin.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, 'admin')`,
+        args: [adminEmail, adminUsername, adminHash]
+      });
+      console.log('Default admin user created');
+    }
+
+    // Seed default sync config
+    const checkSyncConfig = await db.execute('SELECT * FROM sync_config WHERE id = 1');
+    if (checkSyncConfig.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
+             VALUES (1, ?, ?, ?, ?, ?)`,
+        args: ['https://members.freelancerservice.site/content/p/id/173/', 'https://members.freelancerservice.site/login', 'vigneshsingaravelan@kyda.in', 'vigneshsingaravelan@kyda.in', new Date().toISOString()]
+      });
+    }
+
+    // Seed initial sync status
     const checkStatus = await db.execute('SELECT * FROM sync_status WHERE id = 1');
     if (checkStatus.rows.length === 0) {
-      await db.execute({
-        sql: 'INSERT INTO sync_status (id, message) VALUES (1, ?)',
-        args: ['Worker initialized']
-      });
-    } else {
-      // Ensure is_syncing is reset on server start
-      await db.execute('UPDATE sync_status SET is_syncing = 0 WHERE id = 1');
+      await db.execute({ sql: 'INSERT INTO sync_status (id, message) VALUES (1, ?)', args: ['Worker initialized'] });
     }
+
+    console.log('Database initialization complete');
   } catch (err) {
-    console.error('Error initializing sync_status table:', err);
+    console.error('Database initialization error:', err);
   }
 }
 
@@ -57,8 +123,8 @@ const db = createClient({
   authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njg4OTAwODUsImlkIjoiMWJjYTk0ZjctY2M4MS00OGI5LWEyNTQtNmVhOGJlNTRhN2YzIiwicmlkIjoiMGI0YTc4NmUtNjlmOS00OWJiLWIxOTYtZDljZjllMWQzY2YyIn0.o8tpPd4pxTCjMLR6i4jAG3DXb6AEZ986E9StxKNfMOO-EHrecuA89E2BsC0sHMkxd7eAA3Dohw_UOZG_Ic5KAQ'
 });
 
-// Initialize sync status table after db is ready
-initSyncStatus();
+// Initialize database
+initDb();
 
 
 app.use(cors());
@@ -95,109 +161,7 @@ const upload = multer({
   }
 });
 
-// --- Database Initialization ---
-async function initDb() {
-  try {
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user',
-        access_expires_at TEXT,
-        mobile_number TEXT,
-        is_logged_in INTEGER DEFAULT 0,
-        is_demo INTEGER DEFAULT 0
-      )
-    `);
-
-    // Migration: Add is_demo column if it doesn't exist
-    try {
-      await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0');
-      console.log('Migration: is_demo column added');
-    } catch (e) {
-      // Column might already exist
-    }
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS helium10_session (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        session_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS sync_config (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        source_url TEXT NOT NULL,
-        login_url TEXT NOT NULL,
-        amember_login TEXT NOT NULL,
-        amember_pass TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    // Seed default sync config if empty
-    const checkSyncConfig = await db.execute('SELECT * FROM sync_config WHERE id = 1');
-    if (checkSyncConfig.rows.length === 0) {
-      await db.execute({
-        sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
-             VALUES (1, ?, ?, ?, ?, ?)`,
-        args: [
-          'https://members.freelancerservice.site/content/p/id/173/',
-          'https://members.freelancerservice.site/login',
-          'vigneshsingaravelan@kyda.in',
-          'vigneshsingaravelan@kyda.in',
-          new Date().toISOString()
-        ]
-      });
-      console.log('Default sync config seeded');
-    }
-
-    // Reset login status on restart
-    await db.execute('UPDATE users SET is_logged_in = 0');
-
-    // Seed default admin
-    const adminEmail = 'admin@example.com';
-    const adminUsername = 'admin';
-    const adminPassword = 'admin1239';
-    const adminHash = bcrypt.hashSync(adminPassword, 10);
-
-    const checkAdmin = await db.execute({
-      sql: 'SELECT * FROM users WHERE username = ?',
-      args: [adminUsername]
-    });
-
-    if (checkAdmin.rows.length === 0) {
-      await db.execute({
-        sql: `INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, 'admin')`,
-        args: [adminEmail, adminUsername, adminHash]
-      });
-      console.log('Default admin user created');
-    } else {
-      // Force admin role if user exists but has wrong role
-      await db.execute({
-        sql: `UPDATE users SET role = 'admin' WHERE username = ?`,
-        args: [adminUsername]
-      });
-      console.log('Admin user role verified/updated');
-    }
-
-    // Seed default Helium 10 session token
-    const defaultHeliumToken = `brandseotools(created-by-premiumtools.shop) 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_-18rSAZTA==`;
-    const now = new Date().toISOString();
-    await db.execute({
-      sql: `INSERT OR IGNORE INTO helium10_session (id, session_json, updated_at) VALUES (1, ?, ?)`,
-      args: [defaultHeliumToken, now]
-    });
-    console.log('Database initialized successfully');
-  } catch (err) {
-    console.error('Error during DB initialization:', err);
-  }
-}
-initDb();
+// Redundant initDb block removed
 
 // --- Helpers ---
 function createToken(user) {
@@ -791,7 +755,22 @@ async function startBackgroundSync() {
   setTimeout(performSync, 5000); // Wait 5s for server to settle
 
   // Schedule every 5 minutes
+  console.log('[BackgroundSync] Worker scheduled for every 5 minutes');
   setInterval(performSync, 5 * 60 * 1000);
+}
+
+// --- Keep-Alive Pinger ---
+function startPinger() {
+  const RENDER_URL = 'https://dashboard-project-uzmg.onrender.com/api/health';
+  console.log('[Pinger] Starting self-pinger to:', RENDER_URL);
+  setInterval(async () => {
+    try {
+      await axios.get(RENDER_URL);
+      console.log('[Pinger] ✅ Self-ping successful');
+    } catch (err) {
+      console.error('[Pinger] ❌ Self-ping failed:', err.message);
+    }
+  }, 10 * 60 * 1000); // 10 minutes
 }
 
 app.listen(PORT, () => {
@@ -799,10 +778,13 @@ app.listen(PORT, () => {
   console.log('Default admin credentials:');
   console.log('  Username: admin');
   console.log('  Email: admin@example.com');
-  console.log('  Password: admin123');
+  console.log('  Password: admin1239');
 
   // Start the background worker
   startBackgroundSync();
+
+  // Start self-pinger to prevent Render sleep
+  startPinger();
 });
 
 
