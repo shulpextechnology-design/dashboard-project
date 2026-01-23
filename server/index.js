@@ -18,12 +18,36 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
 const BACKEND_VERSION = 'v1.1.3-sync-debug';
 
-let lastSyncStatus = {
-  lastSuccess: null,
-  lastError: null,
-  message: 'Worker not started',
-  isSyncing: false
-};
+// --- Sync Status Table Initialization ---
+async function initSyncStatus() {
+  try {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS sync_status (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_success TEXT,
+        last_error TEXT,
+        message TEXT,
+        is_syncing INTEGER DEFAULT 0
+      )
+    `);
+
+    // Seed initial status if empty
+    const checkStatus = await db.execute('SELECT * FROM sync_status WHERE id = 1');
+    if (checkStatus.rows.length === 0) {
+      await db.execute({
+        sql: 'INSERT INTO sync_status (id, message) VALUES (1, ?)',
+        args: ['Worker initialized']
+      });
+    } else {
+      // Ensure is_syncing is reset on server start
+      await db.execute('UPDATE sync_status SET is_syncing = 0 WHERE id = 1');
+    }
+  } catch (err) {
+    console.error('Error initializing sync_status table:', err);
+  }
+}
+
+
 
 // Database setup (Turso Cloud SQLite)
 // NOTE: Data is stored in the Turso Cloud. This ensures persistence across server restarts and redeployments.
@@ -32,6 +56,10 @@ const db = createClient({
   url: 'libsql://dashboard-db-shulpextechnology-design.aws-ap-northeast-1.turso.io',
   authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njg4OTAwODUsImlkIjoiMWJjYTk0ZjctY2M4MS00OGI5LWEyNTQtNmVhOGJlNTRhN2YzIiwicmlkIjoiMGI0YTc4NmUtNjlmOS00OWJiLWIxOTYtZDljZjllMWQzY2YyIn0.o8tpPd4pxTCjMLR6i4jAG3DXb6AEZ986E9StxKNfMOO-EHrecuA89E2BsC0sHMkxd7eAA3Dohw_UOZG_Ic5KAQ'
 });
+
+// Initialize sync status table after db is ready
+initSyncStatus();
+
 
 app.use(cors());
 app.use(express.json());
@@ -486,9 +514,25 @@ app.put('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, re
 });
 
 // Sync Debug & Trigger
-app.get('/api/admin/sync-debug', authMiddleware, adminOnly, (req, res) => {
-  res.json(lastSyncStatus);
+app.get('/api/admin/sync-debug', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM sync_status WHERE id = 1');
+    const row = result.rows[0];
+    if (row) {
+      res.json({
+        lastSuccess: row.last_success,
+        lastError: row.last_error,
+        message: row.message,
+        isSyncing: row.is_syncing === 1
+      });
+    } else {
+      res.json({ message: 'No status found' });
+    }
+  } catch (err) {
+    res.status(500).json({ message: 'DB error fetching sync status' });
+  }
 });
+
 
 app.post('/api/admin/sync-trigger', authMiddleware, adminOnly, async (req, res) => {
   if (global.triggerBackgroundSync) {
@@ -652,12 +696,19 @@ async function startBackgroundSync() {
   const client = wrapper(axios.create({ jar }));
 
   async function performSync() {
-    if (lastSyncStatus.isSyncing) return;
-    lastSyncStatus.isSyncing = true;
-    lastSyncStatus.message = 'Syncing...';
-
-    console.log('[BackgroundSync] Starting automated synchronization...');
     try {
+      // Check if already syncing
+      const statusCheck = await db.execute('SELECT is_syncing FROM sync_status WHERE id = 1');
+      if (statusCheck.rows[0]?.is_syncing === 1) return;
+
+      // Set syncing state
+      await db.execute({
+        sql: 'UPDATE sync_status SET is_syncing = 1, message = ? WHERE id = 1',
+        args: ['Syncing...']
+      });
+
+      console.log('[BackgroundSync] Starting automated synchronization...');
+
       // Fetch latest config from DB
       const configResult = await db.execute('SELECT * FROM sync_config WHERE id = 1');
       const config = configResult.rows[0];
@@ -716,18 +767,23 @@ async function startBackgroundSync() {
         args: [token.trim(), now]
       });
 
-      lastSyncStatus.lastSuccess = new Date().toISOString();
-      lastSyncStatus.lastError = null;
-      lastSyncStatus.message = 'Success';
+      // Update success status in DB
+      await db.execute({
+        sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0 WHERE id = 1',
+        args: [new Date().toISOString(), 'Success']
+      });
+
       console.log('[BackgroundSync] ✅ Successfully synced token at:', new Date().toLocaleString());
     } catch (err) {
-      lastSyncStatus.lastError = err.message;
-      lastSyncStatus.message = 'Error: ' + err.message;
       console.error('[BackgroundSync] ❌ Sync error:', err.message);
-    } finally {
-      lastSyncStatus.isSyncing = false;
+      // Update error status in DB
+      await db.execute({
+        sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0 WHERE id = 1',
+        args: [err.message, 'Error: ' + err.message]
+      });
     }
   }
+
 
   global.triggerBackgroundSync = performSync;
 
