@@ -5,7 +5,7 @@ axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '';
 
 const AuthContext = createContext(null);
 
-const SESSION_EXPIRY_DEFAULT = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_EXPIRY_DEFAULT = 5 * 60 * 1000; // 5 minutes
 const SESSION_EXPIRY_REMEMBER = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export function AuthProvider({ children }) {
@@ -16,43 +16,51 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
+  const logout = () => {
+    console.log('[AuthDebug] Session expired or user logged out.');
+    setAuthState({ user: null, token: null });
+    localStorage.removeItem('auth');
+    delete axios.defaults.headers.common.Authorization;
+  };
+
   useEffect(() => {
+    // Axios Interceptor for 401 errors
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response && error.response.status === 401) {
+          console.warn('[AuthDebug] 401 Unauthorized received. Logging out.');
+          logout();
+        }
+        return Promise.reject(error);
+      }
+    );
+
     const initAuth = () => {
       try {
         const stored = localStorage.getItem('auth');
         if (stored) {
           const parsed = JSON.parse(stored);
           const now = Date.now();
-          // Fail-open: If lastActivity is missing/invalid, treat as active and repair it.
           let lastActivity = parsed.lastActivity || 0;
 
-          // If we have a token but no timestamp, assume it's valid and start tracking now.
           if (lastActivity === 0) {
             console.warn('[AuthDebug] Found token without timestamp. Repairing session.');
             lastActivity = now;
           }
 
           const rememberMe = parsed.rememberMe || false;
-          const expiryLimit = rememberMe ? SESSION_EXPIRY_REMEMBER : SESSION_EXPIRY_DEFAULT;
+          // Even if rememberMe is true, the user wants 5 mins session. 
+          // However, usually rememberMe refers to persistent login across browser closes.
+          // For this specific request, I will strictly enforce 5 mins inactivity logout regardless.
+          const expiryLimit = SESSION_EXPIRY_DEFAULT;
 
           const timeSinceLastActivity = now - lastActivity;
 
-          console.log('[AuthDebug] Checking session:', {
-            now,
-            lastActivity,
-            timeSinceLastActivity,
-            expiryLimit,
-            rememberMe,
-            isValid: timeSinceLastActivity < expiryLimit
-          });
-
-          // Only logout if STRICTLY expired
           if (timeSinceLastActivity > expiryLimit) {
-            console.warn('[AuthDebug] Session expired. Logging out.', { timeSinceLastActivity });
-            localStorage.removeItem('auth');
+            console.warn('[AuthDebug] Session expired on init.', { timeSinceLastActivity });
+            logout();
           } else {
-            console.log('[AuthDebug] Session valid/repaired. Recovering user:', parsed.user?.username);
-
             if (parsed.token) {
               axios.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
             }
@@ -62,18 +70,10 @@ export function AuthProvider({ children }) {
               token: parsed.token,
               rememberMe: parsed.rememberMe
             });
-
-            // Refresh timestamp (Sliding Window)
-            parsed.lastActivity = now;
-            localStorage.setItem('auth', JSON.stringify(parsed));
           }
-        } else {
-          console.log('[AuthDebug] No session found in localStorage.');
         }
       } catch (error) {
         console.error('[AuthDebug] Init error:', error);
-        // Do NOT clear auth on error unless we are sure. 
-        // Better to let the user try logging in again manually if it's broken.
       } finally {
         setLoading(false);
       }
@@ -81,10 +81,24 @@ export function AuthProvider({ children }) {
 
     initAuth();
 
-    // Listen for changes in other tabs
+    // Background Expiry Check (every 30 seconds)
+    const expiryInterval = setInterval(() => {
+      const stored = localStorage.getItem('auth');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const now = Date.now();
+          const lastActivity = parsed.lastActivity || 0;
+          if (now - lastActivity > SESSION_EXPIRY_DEFAULT) {
+            console.warn('[AuthDebug] Background check: Session expired.');
+            logout();
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }, 30000);
+
     const handleStorageChange = (e) => {
       if (e.key === 'auth') {
-        console.log('[AuthDebug] Storage changed in another tab');
         if (e.newValue) {
           try {
             const parsed = JSON.parse(e.newValue);
@@ -92,9 +106,7 @@ export function AuthProvider({ children }) {
             if (parsed.token) {
               axios.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
             }
-          } catch (err) {
-            console.error('[AuthDebug] Error parsing storage change:', err);
-          }
+          } catch (err) { /* ignore */ }
         } else {
           setAuthState({ user: null, token: null });
           delete axios.defaults.headers.common.Authorization;
@@ -104,7 +116,6 @@ export function AuthProvider({ children }) {
 
     window.addEventListener('storage', handleStorageChange);
 
-    // Active Activity Tracking (Sliding Window)
     const updateActivity = () => {
       const stored = localStorage.getItem('auth');
       if (stored) {
@@ -120,6 +131,8 @@ export function AuthProvider({ children }) {
     activityEvents.forEach(event => window.addEventListener(event, updateActivity));
 
     return () => {
+      axios.interceptors.response.eject(interceptor);
+      clearInterval(expiryInterval);
       window.removeEventListener('storage', handleStorageChange);
       activityEvents.forEach(event => window.removeEventListener(event, updateActivity));
     };
@@ -127,7 +140,6 @@ export function AuthProvider({ children }) {
 
   const login = (data, rememberMe = false) => {
     const now = Date.now();
-    console.log('[AuthDebug] Logging in. Setting lastActivity:', now, 'RememberMe:', rememberMe);
     const authData = {
       ...data,
       lastActivity: now,
@@ -136,13 +148,6 @@ export function AuthProvider({ children }) {
     setAuthState({ user: data.user, token: data.token, rememberMe });
     localStorage.setItem('auth', JSON.stringify(authData));
     axios.defaults.headers.common.Authorization = `Bearer ${data.token}`;
-  };
-
-  const logout = () => {
-    console.log('[AuthDebug] User initiated logout.');
-    setAuthState({ user: null, token: null });
-    localStorage.removeItem('auth');
-    delete axios.defaults.headers.common.Authorization;
   };
 
   const value = {
