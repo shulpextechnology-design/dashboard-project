@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.1.9-sync-FINAL-TRANSIT';
+const BACKEND_VERSION = 'v1.2.1-sync-PRO-MAX';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -695,7 +695,14 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
   const jar = new CookieJar();
-  const client = wrapper(axios.create({ jar }));
+  const client = wrapper(axios.create({
+    jar,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9'
+    }
+  }));
 
   async function performSync() {
     try {
@@ -763,19 +770,41 @@ async function startBackgroundSync() {
         formData.append('amember_pass', amember_pass);
         formData.append('login_attempt_id', attemptId);
 
-        await client.post(login_url, formData.toString(), {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        const loginRes = await client.post(login_url, formData, {
+          maxRedirects: 5,
           timeout: 10000
         });
 
+        console.log(`[BackgroundSync] Login POST status: ${loginRes.status}`);
+        const cookies = await jar.getCookies(source_url);
+        console.log(`[BackgroundSync] Cookies in jar after login: ${cookies.length}`);
+
+        if (loginRes.data.includes('Invalid') || loginRes.data.includes('error')) {
+          console.warn('[BackgroundSync] Potential login failure detected in response body.');
+        }
+
         contentPageRes = await client.get(source_url, { timeout: 10000, responseType: 'text' });
-        tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
+        tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
         token = tokenMatch ? tokenMatch[1] : null;
+
+        if (!token) {
+          // Fallback: try one more time after a short delay
+          await new Promise(r => setTimeout(r, 2000));
+          contentPageRes = await client.get(source_url, { timeout: 10000, responseType: 'text' });
+          tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
+          token = tokenMatch ? tokenMatch[1] : null;
+        }
       }
 
       if (!token) {
-        console.error('[BackgroundSync] Extraction failed. Page snippet:', contentPageRes.data.substring(0, 500));
-        throw new Error('Failed to extract token after login');
+        console.error('[BackgroundSync] Final extraction failed. Status:', contentPageRes.status);
+        console.error('[BackgroundSync] Page Sample (1000 chars):', contentPageRes.data.substring(0, 1000));
+
+        if (contentPageRes.data.includes('Cloudflare') || contentPageRes.data.includes('Access Denied')) {
+          throw new Error('Blocked by security firewall (Cloudflare/Access Denied)');
+        }
+
+        throw new Error('Failed to extract token after login (Regex mismatch)');
       }
 
       // 4. Update Database
