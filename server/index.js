@@ -68,6 +68,16 @@ async function initDb() {
       )
     `);
 
+    // 5. Sync logs table (Detailed history)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS sync_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+        event TEXT NOT NULL,
+        details TEXT
+      )
+    `);
+
     // Seed/Migrate as needed...
     // Migration: Add is_demo column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
@@ -132,8 +142,25 @@ app.use(express.json());
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running', version: BACKEND_VERSION });
+  res.json({ status: 'ok', message: 'Server is running', version: BACKEND_VERSION, timestamp: new Date().toISOString() });
 });
+
+// --- Database Helper with Retry Logic ---
+async function dbExecuteWithRetry(queryObj, retries = 3, delay = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await db.execute(queryObj);
+    } catch (err) {
+      const isNetworkError = err.message.includes('ETIMEDOUT') || err.message.includes('ECONNRESET') || err.message.includes('fetch failed');
+      if (isNetworkError && i < retries - 1) {
+        console.warn(`[DB] Retry ${i + 1}/${retries} after error: ${err.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 // --- File Upload Setup ---
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -661,12 +688,36 @@ async function startBackgroundSync() {
 
   async function performSync() {
     try {
-      // Check if already syncing
-      const statusCheck = await db.execute('SELECT is_syncing FROM sync_status WHERE id = 1');
-      if (statusCheck.rows[0]?.is_syncing === 1) return;
+      // LOG ATTEMPT
+      await dbExecuteWithRetry({
+        sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
+        args: ['Attempt', 'Starting background sync cycle']
+      });
+
+      // Check if already syncing + Stale worker protection (if stuck for >15 mins)
+      const statusCheck = await dbExecuteWithRetry('SELECT is_syncing, last_success, message FROM sync_status WHERE id = 1');
+      const status = statusCheck.rows[0];
+
+      if (status?.is_syncing === 1) {
+        const lastUpdate = new Date(status.last_success || 0).getTime();
+        const nowTime = Date.now();
+        if (nowTime - lastUpdate > 15 * 60 * 1000) {
+          console.warn('[BackgroundSync] Worker seems stale. Forcing reset.');
+          await dbExecuteWithRetry({
+            sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
+            args: ['Recovery', 'Forcing reset of stale is_syncing flag']
+          });
+        } else {
+          await dbExecuteWithRetry({
+            sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
+            args: ['Skip', 'Already syncing (active)']
+          });
+          return;
+        }
+      }
 
       // Set syncing state
-      await db.execute({
+      await dbExecuteWithRetry({
         sql: 'UPDATE sync_status SET is_syncing = 1, message = ? WHERE id = 1',
         args: ['Syncing...']
       });
@@ -674,7 +725,7 @@ async function startBackgroundSync() {
       console.log('[BackgroundSync] Starting automated synchronization...');
 
       // Fetch latest config from DB
-      const configResult = await db.execute('SELECT * FROM sync_config WHERE id = 1');
+      const configResult = await dbExecuteWithRetry('SELECT * FROM sync_config WHERE id = 1');
       const config = configResult.rows[0];
 
       if (!config) {
@@ -682,26 +733,20 @@ async function startBackgroundSync() {
       }
 
       const { source_url, login_url, amember_login, amember_pass } = config;
-      // Step A: "Ultra-Fast" Try - Attempt direct extraction with existing cookies
+      // Step A: Attempt direct extraction
       console.log('[BackgroundSync] Attempting direct extraction (Session Reuse)...');
-      let contentPageRes = await client.get(source_url, { timeout: 5000, responseType: 'text' });
+      let contentPageRes = await client.get(source_url, { timeout: 8000, responseType: 'text' });
       let tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
       let token = tokenMatch ? tokenMatch[1] : null;
 
-      // If token not found, session might be expired. Proceed to full login flow.
       if (!token) {
-        console.log('[BackgroundSync] Session expired or invalid. Performing full login flow...');
-
-        // 1. GET login page to capture cookies and attempt_id
-        const loginPageRes = await client.get(login_url, { timeout: 8000, responseType: 'text' });
+        console.log('[BackgroundSync] Session expired. Performing full login flow...');
+        const loginPageRes = await client.get(login_url, { timeout: 10000, responseType: 'text' });
         const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
         const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
-        if (!attemptId) {
-          throw new Error('Failed to find login_attempt_id. Source site layout might have changed.');
-        }
+        if (!attemptId) throw new Error('Failed to find login_attempt_id');
 
-        // 2. POST login credentials
         const formData = new URLSearchParams();
         formData.append('amember_login', amember_login);
         formData.append('amember_pass', amember_pass);
@@ -709,45 +754,54 @@ async function startBackgroundSync() {
 
         await client.post(login_url, formData.toString(), {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          timeout: 8000
+          timeout: 10000
         });
 
-        // 3. GET target page with session token (Retry extraction after login)
-        contentPageRes = await client.get(source_url, { timeout: 8000, responseType: 'text' });
+        contentPageRes = await client.get(source_url, { timeout: 10000, responseType: 'text' });
         tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
         token = tokenMatch ? tokenMatch[1] : null;
       }
 
-      if (!token) {
-        throw new Error('Failed to extract token even after login. Check account access.');
-      }
+      if (!token) throw new Error('Failed to extract token after login');
 
       // 4. Update Database
       const now = new Date().toISOString();
-      await db.execute({
-        sql: `INSERT INTO helium10_session (id, session_json, updated_at)
-             VALUES (1, ?, ?)
+      await dbExecuteWithRetry({
+        sql: `INSERT INTO helium10_session (id, session_json, updated_at) 
+             VALUES (1, ?, ?) 
              ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
         args: [token.trim(), now]
       });
 
-      // Update success status in DB
-      await db.execute({
+      await dbExecuteWithRetry({
         sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0 WHERE id = 1',
-        args: [new Date().toISOString(), 'Success']
+        args: [now, 'Success']
       });
 
-      console.log('[BackgroundSync] ✅ Successfully synced token at:', new Date().toLocaleString());
+      await dbExecuteWithRetry({
+        sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
+        args: ['Success', `Synced at ${new Date().toLocaleString()}`]
+      });
+
+      console.log('[BackgroundSync] ✅ Successfully synced token');
     } catch (err) {
       console.error('[BackgroundSync] ❌ Sync error:', err.message);
-      // Update error status in DB
-      await db.execute({
+      await dbExecuteWithRetry({
         sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0 WHERE id = 1',
         args: [err.message, 'Error: ' + err.message]
-      });
+      }).catch(e => console.error('[Fatal] Could not update sync_status with error:', e.message));
+
+      await dbExecuteWithRetry({
+        sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
+        args: ['Error', err.message]
+      }).catch(() => { });
+    } finally {
+      // Ensure syncing flag is reset even on fatal database blowups if possible
+      try {
+        await db.execute('UPDATE sync_status SET is_syncing = 0 WHERE id = 1');
+      } catch (e) { /* total db failure */ }
     }
   }
-
 
   global.triggerBackgroundSync = performSync;
 
@@ -757,6 +811,7 @@ async function startBackgroundSync() {
   // Schedule every 5 minutes
   console.log('[BackgroundSync] Worker scheduled for every 5 minutes');
   setInterval(performSync, 5 * 60 * 1000);
+}
 }
 
 // --- Keep-Alive Pinger ---
@@ -770,7 +825,7 @@ function startPinger() {
     } catch (err) {
       console.error('[Pinger] ❌ Self-ping failed:', err.message);
     }
-  }, 10 * 60 * 1000); // 10 minutes
+  }, 1 * 60 * 1000); // Reduce to 1 minute for maximum wakefulness
 }
 
 app.listen(PORT, () => {
