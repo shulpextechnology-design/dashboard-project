@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.1.3-sync-debug';
+const BACKEND_VERSION = 'v1.1.4-sync-final';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -811,7 +811,6 @@ async function startBackgroundSync() {
   // Schedule every 5 minutes
   console.log('[BackgroundSync] Worker scheduled for every 5 minutes');
   setInterval(performSync, 5 * 60 * 1000);
-}
 }
 
 // --- Keep-Alive Pinger ---
