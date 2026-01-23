@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.1.4-sync-final';
+const BACKEND_VERSION = 'v1.1.5-sync-FINAL';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -526,10 +526,12 @@ app.get('/api/admin/sync-debug', authMiddleware, adminOnly, async (req, res) => 
 
 
 app.post('/api/admin/sync-trigger', authMiddleware, adminOnly, async (req, res) => {
+  console.log('[API] Manual sync triggered by admin');
   if (global.triggerBackgroundSync) {
     global.triggerBackgroundSync();
     res.json({ message: 'Sync triggered' });
   } else {
+    console.warn('[API] Trigger failed: background worker not initialized');
     res.status(500).json({ message: 'Background worker not initialized' });
   }
 });
