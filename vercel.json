@@ -4,7 +4,7 @@
     "rewrites": [
         {
             "source": "/api/:path*",
-            "destination": "https://dashboard-project-uzmg.onrender.com/api/:path*"
+            "destination": "https://shulpextechnology-dashboard-server.hf.space/api/:path*"
         },
         {
             "source": "/(.*)",
