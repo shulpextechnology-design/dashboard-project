@@ -789,12 +789,12 @@ async function startBackgroundSync() {
         console.log(`[BackgroundSync] Login POST status: ${loginRes.status}`);
 
         // --- Session Verification Step ---
-        console.log('[BackgroundSync] Verifying session at /member...');
-        const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 8000 });
+        console.log('[BackgroundSync] Step B: Verifying session at /member...');
+        const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 20000 });
         const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
         const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
 
-        console.log(`[BackgroundSync] Session active at /member: ${isLogged}`);
+        console.log(`[BackgroundSync] Step C: Session active at /member: ${isLogged}`);
 
         // Log this state to DB for remote debugging
         await dbExecuteWithRetry({
