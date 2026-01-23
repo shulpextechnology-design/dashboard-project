@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.1.8-sync-DEPLOY-FINAL';
+const BACKEND_VERSION = 'v1.1.9-sync-FINAL-TRANSIT';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -742,7 +742,7 @@ async function startBackgroundSync() {
       // Step A: Attempt direct extraction
       console.log('[BackgroundSync] Attempting direct extraction (Session Reuse)...');
       let contentPageRes = await client.get(source_url, { timeout: 8000, responseType: 'text' });
-      let tokenMatch = contentPageRes.data.match(/var copyText = "(brandseotools.*?)"/);
+      let tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
       let token = tokenMatch ? tokenMatch[1] : null;
 
       if (!token) {
@@ -768,7 +768,10 @@ async function startBackgroundSync() {
         token = tokenMatch ? tokenMatch[1] : null;
       }
 
-      if (!token) throw new Error('Failed to extract token after login');
+      if (!token) {
+        console.error('[BackgroundSync] Extraction failed. Page snippet:', contentPageRes.data.substring(0, 500));
+        throw new Error('Failed to extract token after login');
+      }
 
       // 4. Update Database
       const now = new Date().toISOString();
