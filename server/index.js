@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.2.1-sync-PRO-MAX';
+const BACKEND_VERSION = 'v1.2.5-sync-TIMEOUT-FIX';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -752,8 +752,14 @@ async function startBackgroundSync() {
 
       const { source_url, login_url, amember_login, amember_pass } = config;
       // Step A: Attempt direct extraction
-      console.log('[BackgroundSync] Attempting direct extraction (Session Reuse)...');
-      let contentPageRes = await client.get(source_url, { timeout: 8000, responseType: 'text' });
+      console.log(`[BackgroundSync] Step A: Checking session reuse at ${source_url}...`);
+      let contentPageRes;
+      try {
+        contentPageRes = await client.get(source_url, { timeout: 20000, responseType: 'text' });
+      } catch (err) {
+        console.warn(`[BackgroundSync] Initial check timed out or failed: ${err.message}. Proceeding to login.`);
+        contentPageRes = { data: '' }; // Force login flow
+      }
       let tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
       let token = tokenMatch ? tokenMatch[1] : null;
 
@@ -770,29 +776,53 @@ async function startBackgroundSync() {
         formData.append('amember_pass', amember_pass);
         formData.append('login_attempt_id', attemptId);
 
-        const loginRes = await client.post(login_url, formData, {
+        const loginRes = await client.post(login_url, formData.toString(), {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://members.freelancerservice.site',
+            'Referer': login_url
+          },
           maxRedirects: 5,
-          timeout: 10000
+          timeout: 20000
         });
 
         console.log(`[BackgroundSync] Login POST status: ${loginRes.status}`);
-        const cookies = await jar.getCookies(source_url);
-        console.log(`[BackgroundSync] Cookies in jar after login: ${cookies.length}`);
 
-        if (loginRes.data.includes('Invalid') || loginRes.data.includes('error')) {
-          console.warn('[BackgroundSync] Potential login failure detected in response body.');
+        // --- Session Verification Step ---
+        console.log('[BackgroundSync] Verifying session at /member...');
+        const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 8000 });
+        const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
+        const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
+
+        console.log(`[BackgroundSync] Session active at /member: ${isLogged}`);
+
+        // Log this state to DB for remote debugging
+        await dbExecuteWithRetry({
+          sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
+          args: ['Diagnostic', `Session @ /member: ${isLogged}, Title: ${pageTitle}`]
+        });
+
+        if (!isLogged) {
+          console.error('[BackgroundSync] Login appeared successful but session is missing at /member.');
+          // Don't throw yet, try the content page anyway in case /member is weird
         }
 
-        contentPageRes = await client.get(source_url, { timeout: 10000, responseType: 'text' });
-        tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
+        // --- Final Extraction ---
+        console.log(`[BackgroundSync] Step D: Fetching content with active session: ${source_url}`);
+        contentPageRes = await client.get(source_url, {
+          headers: { 'Referer': 'https://members.freelancerservice.site/member' },
+          timeout: 20000,
+          responseType: 'text'
+        });
+
+        // Even more permissive regex: handles whitespace, optional var, and any quotes
+        tokenMatch = contentPageRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
         token = tokenMatch ? tokenMatch[1] : null;
 
         if (!token) {
-          // Fallback: try one more time after a short delay
-          await new Promise(r => setTimeout(r, 2000));
-          contentPageRes = await client.get(source_url, { timeout: 10000, responseType: 'text' });
-          tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
-          token = tokenMatch ? tokenMatch[1] : null;
+          console.log('[BackgroundSync] First regex fail. Checking for raw token snippet...');
+          const altMatch = contentPageRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
+          token = altMatch ? altMatch[0] : null;
         }
       }
 
