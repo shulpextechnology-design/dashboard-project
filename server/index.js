@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.1.6-sync-FIX';
+const BACKEND_VERSION = 'v1.1.7-sync-FIXED';
 
 // --- Database Initialization ---
 async function initDb() {
