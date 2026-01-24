@@ -7,6 +7,7 @@ import Helium10Page from './pages/Helium10Page';
 import ExtensionPage from './pages/ExtensionPage';
 import SettingsPage from './pages/SettingsPage';
 import PlaceholderPage from './pages/PlaceholderPage';
+import AdminPage1 from './pages/AdminPage1';
 import SidebarLayout from './components/SidebarLayout';
 import { useAuth, AuthProvider } from './auth';
 
@@ -68,6 +69,16 @@ function AppRoutes() {
           <PrivateRoute role="admin">
             <SidebarLayout>
               <AdminPage />
+            </SidebarLayout>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/admin-1"
+        element={
+          <PrivateRoute role="admin">
+            <SidebarLayout>
+              <AdminPage1 />
             </SidebarLayout>
           </PrivateRoute>
         }

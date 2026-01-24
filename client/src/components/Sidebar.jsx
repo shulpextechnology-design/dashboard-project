@@ -27,6 +27,7 @@ const Sidebar = ({ logout, user }) => {
 
     if (user?.role === 'admin') {
         navItems.splice(1, 0, { name: 'Admin Panel', icon: <Settings size={20} />, path: '/admin' });
+        navItems.splice(2, 0, { name: 'Admin Panel 1', icon: <Activity size={20} />, path: '/admin-1' });
     }
 
     return (
