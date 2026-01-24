@@ -19,7 +19,10 @@ import {
   LayoutDashboard,
   Settings,
   Activity,
-  RefreshCw
+  RefreshCw,
+  Phone,
+  Check,
+  X
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -52,6 +55,8 @@ export default function AdminPage() {
   });
   const [syncConfigLoading, setSyncConfigLoading] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard'); // 'dashboard', 'users', 'sync', 'settings'
+  const [editingDateId, setEditingDateId] = useState(null);
+  const [tempDate, setTempDate] = useState('');
 
   const loadUsers = async () => {
     try {
@@ -179,10 +184,15 @@ export default function AdminPage() {
 
   const updateAccessDate = async (id, current) => {
     const suggested = current ? new Date(current).toISOString().slice(0, 10) : '';
-    const input = window.prompt('Enter expiry date (YYYY-MM-DD):', suggested);
-    if (!input) return;
+    setTempDate(suggested);
+    setEditingDateId(id);
+  };
+
+  const saveCustomDate = async (id) => {
+    if (!tempDate) return setEditingDateId(null);
     try {
-      await axios.put(`/api/admin/users/${id}/access`, { expiresAt: input });
+      await axios.put(`/api/admin/users/${id}/access`, { expiresAt: tempDate });
+      setEditingDateId(null);
       loadUsers();
     } catch (e) {
       alert('Failed to set custom date');
@@ -393,9 +403,8 @@ export default function AdminPage() {
                   <table className="admin-table-v2">
                     <thead>
                       <tr>
-                        <th>User</th>
-                        <th>Mobile</th>
-                        <th>Expiry</th>
+                        <th>User Profile</th>
+                        <th>Expiry Access</th>
                         <th>Status</th>
                         <th>Actions</th>
                       </tr>
@@ -411,15 +420,37 @@ export default function AdminPage() {
                           <td>
                             <div className="user-info-v2">
                               <strong>{u.username}</strong>
-                              <span>{u.email}</span>
+                              <div className="user-sub-info">
+                                <span>{u.email}</span>
+                                <span className="user-phone">
+                                  <Phone size={10} /> {u.mobile_number || 'No Phone'}
+                                </span>
+                              </div>
                             </div>
                           </td>
-                          <td style={{ color: '#64748b', fontSize: '13px' }}>{u.mobile_number || 'N/A'}</td>
                           <td>
-                            <div className="expiry-cell-v2">
-                              <Clock size={12} style={{ opacity: 0.6 }} />
-                              {u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'N/A'}
-                            </div>
+                            {editingDateId === u.id ? (
+                              <div className="inline-date-picker-v2">
+                                <input
+                                  type="date"
+                                  value={tempDate}
+                                  onChange={(e) => setTempDate(e.target.value)}
+                                  autoFocus
+                                />
+                                <button className="save-date-btn" onClick={() => saveCustomDate(u.id)} title="Save">
+                                  <Check size={14} />
+                                </button>
+                                <button className="cancel-date-btn" onClick={() => setEditingDateId(null)} title="Cancel">
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="expiry-cell-v2" onClick={() => updateAccessDate(u.id, u.access_expires_at)}>
+                                <Clock size={12} style={{ opacity: 0.6 }} />
+                                {u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'N/A'}
+                                <Calendar size={12} className="edit-date-icon-inline" />
+                              </div>
+                            )}
                           </td>
                           <td>
                             <span className={`status-badge-v2 ${u.is_logged_in ? 'online' : 'offline'}`}>
@@ -428,9 +459,6 @@ export default function AdminPage() {
                           </td>
                           <td className="action-cell-v2">
                             <button className="mgmt-btn" onClick={() => updateAccess(u.id, 1)} title="Add 1 Month">+1m</button>
-                            <button className="mgmt-btn" style={{ background: '#6366f1', color: 'white' }} onClick={() => updateAccessDate(u.id, u.access_expires_at)} title="Set Custom Date">
-                              <Calendar size={14} />
-                            </button>
                             <button className="mgmt-btn-reset" onClick={() => resetSession(u.id)} title="Reset Session">Reset</button>
                             <button className="mgmt-btn-del" onClick={() => removeUser(u.id)} title="Delete User">
                               <Trash2 size={14} />
