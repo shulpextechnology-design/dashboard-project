@@ -1,15 +1,18 @@
-import React from 'react';
 import {
     Download,
     AlertTriangle,
     PcCase,
-    Smartphone
+    Smartphone,
+    Zap,
+    CheckCircle2
 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../auth';
 
 const ExtensionPage = () => {
     const { token } = useAuth();
+
+    const isEdge = /Edg/.test(window.navigator.userAgent);
 
     const handleDownload = async () => {
         try {
@@ -35,6 +38,32 @@ const ExtensionPage = () => {
 
     return (
         <div className="extension-page-wrapper">
+            <div className="edge-optimization-banner">
+                <div className="edge-banner-content">
+                    <div className="edge-badge">
+                        <Zap size={14} fill="currentColor" />
+                        Best Service
+                    </div>
+                    <h2>Experience Bharat Tools Hub at its Best</h2>
+                    <p>We recommend using <strong>Microsoft Edge</strong> for the most stable and high-performance experience with our premium tools.</p>
+
+                    {isEdge ? (
+                        <div className="edge-status-chip verified">
+                            <CheckCircle2 size={16} />
+                            <span>Optimized for your Edge Browser</span>
+                        </div>
+                    ) : (
+                        <div className="edge-status-chip suggestion">
+                            <AlertTriangle size={16} />
+                            <span>Switch to Edge for 2x faster performance</span>
+                        </div>
+                    )}
+                </div>
+                <div className="edge-banner-visual">
+                    <div className="glow-orb"></div>
+                </div>
+            </div>
+
             <div className="alert-box warning">
                 <h3><AlertTriangle size={20} /> Extension Required</h3>
                 <p>Please install the extension to unlock premium tools</p>
@@ -174,7 +203,7 @@ const ExtensionPage = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
