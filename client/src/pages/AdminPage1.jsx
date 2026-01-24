@@ -18,7 +18,8 @@ import {
     XCircle,
     Download,
     Mail,
-    Phone
+    Phone,
+    Upload
 } from 'lucide-react';
 
 export default function AdminPage1() {
@@ -84,8 +85,8 @@ export default function AdminPage1() {
     };
 
     const filteredUsers = users.filter(u =>
-        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase())
+        (u.username || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.email || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (
@@ -184,10 +185,10 @@ export default function AdminPage1() {
                                         <tr key={u.id}>
                                             <td>
                                                 <div className="user-profile-v1">
-                                                    <div className="avatar-v1">{u.username.charAt(0).toUpperCase()}</div>
+                                                    <div className="avatar-v1">{(u.username || 'U').charAt(0).toUpperCase()}</div>
                                                     <div>
-                                                        <div className="username-v1">{u.username}</div>
-                                                        <div className="email-v1">{u.email}</div>
+                                                        <div className="username-v1">{u.username || 'No Username'}</div>
+                                                        <div className="email-v1">{u.email || 'No Email'}</div>
                                                     </div>
                                                 </div>
                                             </td>

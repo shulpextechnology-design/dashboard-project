@@ -74,6 +74,16 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/admin1"
+        element={
+          <PrivateRoute role="admin">
+            <SidebarLayout>
+              <AdminPage1 />
+            </SidebarLayout>
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/admin-1"
         element={
           <PrivateRoute role="admin">
