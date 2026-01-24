@@ -465,7 +465,7 @@ export default function AdminPage() {
               onClick={() => {
                 const script = `
 // ==UserScript==
-// @name         Helium 10 Auto-Sync (Freelancer Service)
+// @name         Helium 10 Auto-Sync (Bharat Tools Hub)
 // @namespace    http://tampermonkey.net/
 // @version      1.2
 // @description  Automatically sync Helium 10 session tokens to your dashboard.

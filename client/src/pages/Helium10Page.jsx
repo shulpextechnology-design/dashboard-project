@@ -213,7 +213,7 @@ export default function Helium10Page() {
       </div>
 
       <footer className="helium-page-footer">
-        Freelancerservice Premium Access © {new Date().getFullYear()}
+        Bharat Tools Hub Premium Access © {new Date().getFullYear()}
       </footer>
     </div>
   );

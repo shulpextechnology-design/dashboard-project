@@ -36,7 +36,7 @@ export default function DashboardPage() {
   };
 
   const tools = [
-    { name: 'FreelancerService Extensions', icon: <Puzzle size={24} color="#0b9d86" />, action: handleExtensionDownload },
+    { name: 'Bharat Tools Hub Extensions', icon: <Puzzle size={24} color="#0b9d86" />, action: handleExtensionDownload },
     { name: 'Helium 10', icon: <Zap size={24} color="#0b9d86" />, action: () => navigate('/helium10') },
   ];
 

@@ -142,7 +142,7 @@ app.use(express.json());
 
 // Root route
 app.get('/', (req, res) => {
-  res.send('<h1>Freelancer Dashboard API Server</h1><p>The server is running successfully. Please access the dashboard via your Vercel URL.</p>');
+  res.send('<h1>Bharat Tools Hub API Server</h1><p>The server is running successfully. Please access the dashboard via your Vercel URL.</p>');
 });
 
 // Health check endpoint
