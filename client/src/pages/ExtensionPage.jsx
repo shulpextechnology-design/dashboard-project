@@ -4,7 +4,10 @@ import {
     PcCase,
     Smartphone,
     Zap,
-    CheckCircle2
+    CheckCircle2,
+    ExternalLink,
+    BookOpen,
+    BarChart3
 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../auth';
@@ -201,6 +204,41 @@ const ExtensionPage = () => {
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* Helium 10 Promotion Banner */}
+            <div className="h10-promo-banner">
+                <div className="h10-promo-left">
+                    <div className="h10-logo-group">
+                        <BarChart3 className="h10-main-icon" size={24} />
+                        <span className="h10-plus">+</span>
+                        <div className="chrome-mini-icon">
+                            <div className="chrome-dot"></div>
+                        </div>
+                    </div>
+                    <div className="h10-text-content">
+                        <div className="h10-headline">
+                            <h3>Add the Free Helium 10 Chrome Extension</h3>
+                            <span className="h10-user-count">Used by Over 1.2 Million+ Amazon Sellers</span>
+                        </div>
+                        <p>Analyze Helium 10's marketplace data while browsing Amazon</p>
+                    </div>
+                </div>
+                <div className="h10-promo-right">
+                    <button className="btn-h10-learn">
+                        <BookOpen size={16} />
+                        Learn
+                    </button>
+                    <a
+                        href="https://chromewebstore.google.com/detail/helium-10-for-amazon-sell/njmehopjdpcckochcggncklnlmikcbnb?refid=bingshortanswer"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-h10-install"
+                    >
+                        <ExternalLink size={16} />
+                        Install Now
+                    </a>
                 </div>
             </div>
         </div >
