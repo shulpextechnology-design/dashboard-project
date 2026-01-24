@@ -31,6 +31,9 @@ export default function AdminPage1() {
     });
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [extensionFile, setExtensionFile] = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const [lastUploaded, setLastUploaded] = useState(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -42,14 +45,43 @@ export default function AdminPage1() {
                     totalUsers: res.data.length,
                     activeSessons: res.data.filter(u => u.is_logged_in).length
                 }));
+
+                // Load extension meta
+                const metaRes = await axios.get('/api/admin/extension-meta');
+                setLastUploaded(metaRes.data.updated_at);
             } catch (e) {
-                console.error("Failed to load users", e);
+                console.error("Failed to load admin data", e);
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
     }, []);
+
+    const handleExtensionUpload = async (e) => {
+        e.preventDefault();
+        if (!extensionFile) return alert('Please select a file');
+
+        const formData = new FormData();
+        formData.append('extension', extensionFile);
+
+        setUploading(true);
+        try {
+            const res = await axios.post('/api/admin/upload-extension', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            alert(res.data.message);
+            setLastUploaded(res.data.updatedAt);
+            setExtensionFile(null);
+            if (document.getElementById('extension-file-input')) {
+                document.getElementById('extension-file-input').value = '';
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
 
     const filteredUsers = users.filter(u =>
         u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -233,6 +265,37 @@ export default function AdminPage1() {
                                 <Activity />
                                 Server Stats
                             </button>
+                        </div>
+                    </div>
+
+                    <div className="admin-v1-card extension-card-v1">
+                        <div className="card-header-v1">
+                            <h3>Extension Management</h3>
+                            <Upload size={18} color="#0b9d86" />
+                        </div>
+                        <div className="extension-upload-v1">
+                            <p className="side-panel-note-v1">Upload latest .zip for users</p>
+                            <input
+                                id="extension-file-input"
+                                type="file"
+                                accept=".zip"
+                                className="file-input-v1"
+                                onChange={(e) => setExtensionFile(e.target.files[0])}
+                            />
+                            <button
+                                className="btn-v1 btn-v1-primary full-width-v1"
+                                onClick={handleExtensionUpload}
+                                disabled={uploading || !extensionFile}
+                                style={{ marginTop: '12px' }}
+                            >
+                                {uploading ? 'Uploading...' : 'Upload Zip'}
+                            </button>
+                            {lastUploaded && (
+                                <div className="last-uploaded-v1">
+                                    <Clock size={12} />
+                                    Last update: {new Date(lastUploaded).toLocaleDateString()}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

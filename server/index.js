@@ -78,6 +78,16 @@ async function initDb() {
       )
     `);
 
+    // 6. App assets table (Extension zip meta)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS app_assets (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        file_size INTEGER
+      )
+    `);
+
     // Seed/Migrate as needed...
     // Migration: Add is_demo column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
@@ -607,11 +617,33 @@ app.post('/api/helium10-sync', async (req, res) => {
 });
 
 // --- Admin: upload extension ---
-app.post('/api/admin/upload-extension', authMiddleware, adminOnly, upload.single('extension'), (req, res) => {
+app.post('/api/admin/upload-extension', authMiddleware, adminOnly, upload.single('extension'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded' });
   }
-  res.json({ message: 'Extension uploaded successfully', filename: req.file.filename });
+
+  const now = new Date().toISOString();
+  try {
+    await db.execute({
+      sql: `INSERT INTO app_assets (id, filename, updated_at, file_size)
+           VALUES ('extension_zip', ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET filename = excluded.filename, updated_at = excluded.updated_at, file_size = excluded.file_size`,
+      args: ['extension.zip', now, req.file.size]
+    });
+    res.json({ message: 'Extension uploaded successfully', filename: req.file.filename, updatedAt: now });
+  } catch (err) {
+    console.error('DB error recording asset upload:', err);
+    res.status(500).json({ message: 'File saved but failed to record metadata' });
+  }
+});
+
+app.get('/api/admin/extension-meta', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await db.execute(`SELECT updated_at, file_size FROM app_assets WHERE id = 'extension_zip'`);
+    res.json(result.rows[0] || { updated_at: null, file_size: null });
+  } catch (err) {
+    res.status(500).json({ message: 'DB error' });
+  }
 });
 
 // --- User: fetch Helium 10 session for extension ---

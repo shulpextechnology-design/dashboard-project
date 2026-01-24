@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [heliumSaving, setHeliumSaving] = useState(false);
   const [extensionFile, setExtensionFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [lastUploaded, setLastUploaded] = useState(null);
   const [syncSecret, setSyncSecret] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active', 'expired', 'today', or 'demo'
   const [syncStatus, setSyncStatus] = useState({ message: 'Loading...', lastSuccess: null, lastError: null, isSyncing: false });
@@ -96,6 +97,15 @@ export default function AdminPage() {
     }
   };
 
+  const loadExtensionMeta = async () => {
+    try {
+      const res = await axios.get('/api/admin/extension-meta');
+      setLastUploaded(res.data.updated_at);
+    } catch (e) {
+      console.error('Failed to load extension meta', e);
+    }
+  };
+
   const handleManualSync = async () => {
     try {
       setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
@@ -122,6 +132,7 @@ export default function AdminPage() {
     loadSyncSecret();
     loadSyncStatus();
     loadSyncConfig();
+    loadExtensionMeta();
     const interval = setInterval(() => {
       loadSyncStatus();
       loadHeliumSession(); // Also refresh the Helium session timestamp
@@ -260,6 +271,7 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       alert(res.data.message);
+      setLastUploaded(res.data.updatedAt);
       setExtensionFile(null);
       if (document.getElementById('extension-file-input')) {
         document.getElementById('extension-file-input').value = '';
@@ -405,6 +417,11 @@ export default function AdminPage() {
               >
                 {uploading ? 'Uploading...' : 'Upload Extension Zip'}
               </button>
+              {lastUploaded && (
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
+                  Last uploaded: {new Date(lastUploaded).toLocaleString()}
+                </div>
+              )}
             </div>
           </div>
         </section>
