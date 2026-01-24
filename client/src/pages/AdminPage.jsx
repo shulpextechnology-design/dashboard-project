@@ -404,7 +404,6 @@ export default function AdminPage() {
                     <thead>
                       <tr>
                         <th>USER</th>
-                        <th>CONTACT</th>
                         <th>Expiry Access</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -423,13 +422,10 @@ export default function AdminPage() {
                               <strong>{u.username}</strong>
                               <div className="user-sub-info">
                                 <span>{u.email}</span>
+                                <span className="user-phone">
+                                  <Phone size={10} /> {u.mobile_number || 'No Phone'}
+                                </span>
                               </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div className="user-phone-v2">
-                              <Phone size={14} style={{ opacity: 0.6 }} />
-                              <span>{u.mobile_number || 'No Phone'}</span>
                             </div>
                           </td>
                           <td>

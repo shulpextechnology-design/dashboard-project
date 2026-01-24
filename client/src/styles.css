@@ -2798,19 +2798,6 @@ input:focus {
   cursor: not-allowed;
 }
 
-.user-phone-v2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #475569;
-  font-weight: 500;
-}
-
-.user-phone-v2 span {
-  white-space: nowrap;
-}
-
 .demo-btn-v2 {
   background: #6366f1 !important;
 }
