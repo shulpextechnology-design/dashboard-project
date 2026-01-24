@@ -2788,6 +2788,44 @@ input:focus {
   color: #334155;
 }
 
+.expiry-cell-v2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.action-cell-v2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-cell-v2 button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.action-cell-v2 button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.mgmt-btn-reset:hover {
+  background: #fcd34d !important;
+}
+
+.mgmt-btn-del:hover {
+  background: #f87171 !important;
+  color: white !important;
+}
+
 .mgmt-btn-reset {
   background: #fef3c7;
   color: #92400e;

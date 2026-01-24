@@ -392,7 +392,13 @@ export default function AdminPage() {
                 <div className="table-responsive-v2">
                   <table className="admin-table-v2">
                     <thead>
-                      <tr><th>User</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
+                      <tr>
+                        <th>User</th>
+                        <th>Mobile</th>
+                        <th>Expiry</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {users.filter(u => {
@@ -402,13 +408,33 @@ export default function AdminPage() {
                         return isExp;
                       }).map(u => (
                         <tr key={u.id}>
-                          <td><div className="user-info-v2"><strong>{u.username}</strong><span>{u.email}</span></div></td>
-                          <td>{u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'N/A'}</td>
-                          <td><span className={`status-badge-v2 ${u.is_logged_in ? 'online' : 'offline'}`}>{u.is_logged_in ? 'On' : 'Off'}</span></td>
                           <td>
-                            <button className="mgmt-btn" onClick={() => updateAccess(u.id, 1)}>+1m</button>
-                            <button className="mgmt-btn-reset" onClick={() => resetSession(u.id)}>Reset</button>
-                            <button className="mgmt-btn-del" onClick={() => removeUser(u.id)}><Trash2 size={14} /></button>
+                            <div className="user-info-v2">
+                              <strong>{u.username}</strong>
+                              <span>{u.email}</span>
+                            </div>
+                          </td>
+                          <td style={{ color: '#64748b', fontSize: '13px' }}>{u.mobile_number || 'N/A'}</td>
+                          <td>
+                            <div className="expiry-cell-v2">
+                              <Clock size={12} style={{ opacity: 0.6 }} />
+                              {u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'N/A'}
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`status-badge-v2 ${u.is_logged_in ? 'online' : 'offline'}`}>
+                              {u.is_logged_in ? 'On' : 'Off'}
+                            </span>
+                          </td>
+                          <td className="action-cell-v2">
+                            <button className="mgmt-btn" onClick={() => updateAccess(u.id, 1)} title="Add 1 Month">+1m</button>
+                            <button className="mgmt-btn" style={{ background: '#6366f1', color: 'white' }} onClick={() => updateAccessDate(u.id, u.access_expires_at)} title="Set Custom Date">
+                              <Calendar size={14} />
+                            </button>
+                            <button className="mgmt-btn-reset" onClick={() => resetSession(u.id)} title="Reset Session">Reset</button>
+                            <button className="mgmt-btn-del" onClick={() => removeUser(u.id)} title="Delete User">
+                              <Trash2 size={14} />
+                            </button>
                           </td>
                         </tr>
                       ))}
