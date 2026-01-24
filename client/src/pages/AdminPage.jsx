@@ -15,7 +15,11 @@ import {
   UserX,
   Timer,
   Zap,
-  Download
+  Download,
+  LayoutDashboard,
+  Settings,
+  Activity,
+  RefreshCw
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -47,6 +51,7 @@ export default function AdminPage() {
     amember_pass: ''
   });
   const [syncConfigLoading, setSyncConfigLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState('dashboard'); // 'dashboard', 'users', 'sync', 'settings'
 
   const loadUsers = async () => {
     try {
@@ -111,7 +116,7 @@ export default function AdminPage() {
       setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
       await axios.post('/api/admin/sync-trigger');
 
-      // Fast Polling: Check status every 500ms for up to 5 seconds
+      // Fast Polling
       let attempts = 0;
       const poll = setInterval(async () => {
         const res = await axios.get('/api/admin/sync-debug');
@@ -135,11 +140,10 @@ export default function AdminPage() {
     loadExtensionMeta();
     const interval = setInterval(() => {
       loadSyncStatus();
-      loadHeliumSession(); // Also refresh the Helium session timestamp
-    }, 30000); // Update status every 30s
+      loadHeliumSession();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
-
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -202,23 +206,11 @@ export default function AdminPage() {
     setHeliumSaving(true);
     try {
       let cleanedData = heliumSessionJson.trim();
-      const OMNIBOX_KEYWORD = 'brandseotools(created-by-premiumtools.shop)';
-      const AES_KEY = 'brandseotools(created-by-premiumtools.shop)iLFB0yJSdidhLStH6tNcfXMqo7L8qkdofk';
-
-      if (cleanedData.startsWith(OMNIBOX_KEYWORD)) {
-        const payload = cleanedData.split(/\s+/).slice(1).join('').replace(/\s/g, '');
-        if (window.CryptoJS) {
-          const bytes = window.CryptoJS.AES.decrypt(payload, AES_KEY);
-          if (!bytes.toString(window.CryptoJS.enc.Utf8)) throw new Error('Decryption failed');
-        }
-        cleanedData = OMNIBOX_KEYWORD + ' ' + payload;
-      }
-
       await axios.put('/api/admin/helium10-session', { sessionData: cleanedData });
-      alert('Helium 10 session updated successfully!');
+      alert('Helium 10 session updated!');
       loadHeliumSession();
     } catch (e) {
-      alert('Error: ' + (e.message || 'Failed to update session'));
+      alert('Failed to update session');
     } finally {
       setHeliumSaving(false);
     }
@@ -235,13 +227,13 @@ export default function AdminPage() {
   };
 
   const resetSession = async (id) => {
-    if (!window.confirm('Reset this user session? This will allow them to login again if they were locked out.')) return;
+    if (!window.confirm('Reset this user session?')) return;
     try {
       await axios.post(`/api/admin/users/${id}/reset-session`);
-      alert('User session reset successfully.');
+      alert('Session reset.');
       loadUsers();
     } catch (e) {
-      alert(e.response?.data?.message || 'Failed to reset session');
+      alert('Failed to reset session');
     }
   };
 
@@ -250,9 +242,9 @@ export default function AdminPage() {
     setSyncConfigLoading(true);
     try {
       await axios.put('/api/admin/sync-config', syncConfig);
-      alert('Sync configuration updated successfully!');
+      alert('Config updated!');
     } catch (e) {
-      alert('Failed to update sync config: ' + (e.response?.data?.message || e.message));
+      alert('Failed to update config');
     } finally {
       setSyncConfigLoading(false);
     }
@@ -260,498 +252,224 @@ export default function AdminPage() {
 
   const handleExtensionUpload = async (e) => {
     e.preventDefault();
-    if (!extensionFile) return alert('Please select a file');
-
+    if (!extensionFile) return alert('Select a file');
     const formData = new FormData();
     formData.append('extension', extensionFile);
-
     setUploading(true);
     try {
-      const res = await axios.post('/api/admin/upload-extension', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const res = await axios.post('/api/admin/upload-extension', formData);
       alert(res.data.message);
       setLastUploaded(res.data.updatedAt);
       setExtensionFile(null);
-      if (document.getElementById('extension-file-input')) {
-        document.getElementById('extension-file-input').value = '';
-      }
     } catch (err) {
-      alert(err.response?.data?.message || 'Upload failed');
+      alert('Upload failed');
     } finally {
       setUploading(false);
     }
   };
 
   const handleDownloadExcel = () => {
-    try {
-      if (users.length === 0) {
-        alert('No user data available to download.');
-        return;
-      }
-
-      // Format data for Excel
-      const excelData = users.map(u => ({
-        'Username': u.username,
-        'Email Address': u.email,
-        'Mobile Number': u.mobile_number || 'N/A',
-        'Role': u.role,
-        'Access Expiry Date': u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'Inactive',
-        'Status': u.is_logged_in ? 'Logged In' : 'Offline'
-      }));
-
-      // Create Worksheet
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-
-      // Create Workbook
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
-
-      // Generate and download file
-      XLSX.writeFile(workbook, `User_Database_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (err) {
-      console.error('Excel Export Error:', err);
-      alert('Failed to generate Excel file.');
-    }
+    const excelData = users.map(u => ({
+      'Username': u.username,
+      'Email': u.email,
+      'Mobile': u.mobile_number || 'N/A',
+      'Expiry': u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'Inactive',
+      'Status': u.is_logged_in ? 'Online' : 'Offline'
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+    XLSX.writeFile(workbook, `Users_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (
-    <div className="admin-page-v2">
-      <div className="page-header-v2">
-        <ShieldCheck size={32} color="#0b9d86" />
-        <div>
-          <h1>Admin Control Panel</h1>
-          <p>Manage users and synchronize tool sessions.</p>
+    <div className="admin-page-v2 unified-dashboard-v2">
+      {/* Sidebar Navigation */}
+      <div className="admin-sidebar-v2">
+        <div className="sidebar-header-v2">
+          <ShieldCheck size={28} color="#0b9d86" />
+          <div>
+            <h3>Bharat Tools</h3>
+            <span>Control Center</span>
+          </div>
         </div>
-      </div>
-
-      <div className="admin-grid-v2">
-        {/* User Creation Card */}
-        <section className="admin-card-v2">
-          <div className="card-header-v2">
-            <UserPlus size={20} />
-            <h2>Enroll New User</h2>
-          </div>
-          <form className="admin-form-v2" onSubmit={handleCreate}>
-            <div className="form-row-v2">
-              <input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-              <input placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
-            </div>
-            <div className="form-row-v2">
-              <input placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-              <input placeholder="Mobile Phone" type="tel" value={form.mobile_number} onChange={(e) => setForm({ ...form, mobile_number: e.target.value })} />
-            </div>
-            <div className="form-row-v2">
-              <input type="number" min="0" placeholder="Initial Access Months" value={form.months} onChange={(e) => setForm({ ...form, months: e.target.value })} />
-              <input type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} />
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-              <button
-                type="button"
-                className="admin-submit-btn"
-                style={{ background: '#6366f1', margin: 0, flex: 1 }}
-                onClick={() => {
-                  const demoTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-                  setForm({ ...form, months: 0, expiresAt: demoTime.slice(0, 16), is_demo: true });
-                  alert('Form set for 15-minute demo access. Please fill username/email/password and click Create.');
-                }}
-              >
-                Set as 15m Demo
-              </button>
-            </div>
-            <button type="submit" className="admin-submit-btn" disabled={loading}>
-              {loading ? 'Processing...' : 'Create User Account'}
-            </button>
-            {error && <div className="error-msg-v2"><AlertCircle size={14} /> {error}</div>}
-          </form>
-        </section>
-
-        {/* Helium 10 Session Card */}
-        <section className="admin-card-v2">
-          <div className="card-header-v2">
-            <Key size={20} />
-            <h2>Session Synchronization</h2>
-          </div>
-          <div className="helium-sync-v2">
-            <p>Paste the latest Encrypted Token or Cookie JSON to sync with extensions.</p>
-            <textarea
-              rows={6}
-              value={heliumSessionJson}
-              onChange={(e) => setHeliumSessionJson(e.target.value)}
-              placeholder='Paste token here...'
-            />
-            <div className="sync-footer-v2">
-              <span className="last-updated-v2">
-                <Clock size={14} />
-                {heliumSessionUpdatedAt ? `Updated: ${new Date(heliumSessionUpdatedAt).toLocaleString()}` : 'Not configured'}
-              </span>
-              <button className="sync-btn-v2" onClick={handleSaveHeliumSession} disabled={heliumSaving}>
-                {heliumSaving ? 'Saving...' : 'Sync Session'}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Extension Upload Card */}
-        <section className="admin-card-v2">
-          <div className="card-header-v2">
-            <Upload size={20} />
-            <h2>Extension Management</h2>
-          </div>
-          <div className="admin-form-v2">
-            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px' }}>
-              Upload the latest .zip file for users to download.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input
-                id="extension-file-input"
-                type="file"
-                accept=".zip"
-                onChange={(e) => setExtensionFile(e.target.files[0])}
-                style={{ fontSize: '13px' }}
-              />
-              <button
-                className="admin-submit-btn"
-                onClick={handleExtensionUpload}
-                disabled={uploading}
-              >
-                {uploading ? 'Uploading...' : 'Upload Extension Zip'}
-              </button>
-              {lastUploaded && (
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
-                  Last uploaded: {new Date(lastUploaded).toLocaleString()}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Auto-Sync Card */}
-        <section className="admin-card-v2">
-          <div className="card-header-v2">
-            <Zap size={20} />
-            <h2>Background Sync Control</h2>
-          </div>
-          <div className="admin-form-v2">
-            <div className="sync-status-v2" style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Server Status:</span>
-                <span style={{
-                  fontSize: '11px',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: syncStatus.message === 'Success' ? '#dcfce7' : '#fee2e2',
-                  color: syncStatus.message === 'Success' ? '#166534' : '#ef4444'
-                }}>
-                  {syncStatus.message}
-                </span>
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>
-                <div>Last Success: {syncStatus.lastSuccess ? new Date(syncStatus.lastSuccess).toLocaleString() : 'Never'}</div>
-                {syncStatus.lastError && (
-                  <div style={{ color: '#ef4444', marginTop: '4px' }}>Error: {syncStatus.lastError}</div>
-                )}
-              </div>
-            </div>
-
-            <button
-              className="admin-submit-btn"
-              onClick={handleManualSync}
-              disabled={syncStatus.isSyncing}
-              style={{ background: '#0b9d86', marginBottom: '16px' }}
-            >
-              {syncStatus.isSyncing ? 'Syncing...' : 'Force Sync Now'}
-            </button>
-
-            <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '16px 0' }} />
-
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-              Automate Helium 10 updates from the original project manually if background sync fails.
-            </p>
-
-            <div className="sync-info-box-v2">
-              <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#0b9d86', marginBottom: '4px' }}>Sync Secret</div>
-              <code style={{ fontSize: '12px', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', display: 'block' }}>
-                {syncSecret || 'Loading...'}
-              </code>
-            </div>
-
-            <button
-              className="admin-submit-btn"
-              style={{ background: '#1e293b', marginTop: '16px' }}
-              onClick={() => {
-                const script = `
-// ==UserScript==
-// @name         Helium 10 Auto-Sync (Bharat Tools Hub)
-// @namespace    http://tampermonkey.net/
-// @version      1.2
-// @description  Automatically sync Helium 10 session tokens to your dashboard.
-// @author       Antigravity
-// @match        https://members.freelancerservice.site/content/p/id/173/*
-// @grant        GM_xmlhttpRequest
-// @connect      ${window.location.hostname}
-// ==/UserScript==
-
-(function() {
-    'use strict';
-
-    const SYNC_URL = '${window.location.origin}/api/helium10-sync';
-    const SECRET = '${syncSecret}';
-    let lastSyncedToken = '';
-
-    console.log('[Sync] Automatic synchronization started...');
-
-    setInterval(async () => {
-        try {
-            // 1. Try to find the 'copyText' variable globally or in script tags
-            let token = window.copyText;
-            
-            if (!token) {
-                const scripts = Array.from(document.querySelectorAll('script'));
-                const targetScript = scripts.find(s => s.textContent.includes('var copyText = "brandseotools'));
-                if (targetScript) {
-                    const match = targetScript.textContent.match(/var copyText = "(.*?)";/);
-                    if (match) token = match[1];
-                }
-            }
-
-            if (token && token !== lastSyncedToken) {
-                console.log('[Sync] New token detected! Sending to dashboard...');
-                
-                GM_xmlhttpRequest({
-                    method: "POST",
-                    url: SYNC_URL,
-                    data: JSON.stringify({ sessionData: token, secret: SECRET }),
-                    headers: { "Content-Type": "application/json" },
-                    onload: function(response) {
-                        const res = JSON.parse(response.responseText);
-                        if (res.saved) {
-                            console.log('[Sync] ✅ Successfully synced with dashboard.');
-                            lastSyncedToken = token;
-                            showSyncStatus("Sync Success: " + new Date().toLocaleTimeString());
-                        } else {
-                            console.error('[Sync] ❌ Sync failed:', res.message);
-                        }
-                    },
-                    onerror: function(err) {
-                        console.error('[Sync] ❌ Network error during sync:', err);
-                    }
-                });
-            }
-        } catch (e) {
-            console.error('[Sync] Error during check:', e);
-        }
-    }, 5000);
-
-    function showSyncStatus(msg) {
-        let el = document.getElementById('sync-status-indicator');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'sync-status-indicator';
-            el.style = 'position:fixed;bottom:10px;left:10px;background:#0b9d86;color:white;padding:5px 10px;border-radius:5px;font-size:12px;z-index:9999;box-shadow:0 2px 10px rgba(0,0,0,0.2);font-family:sans-serif;';
-            document.body.appendChild(el);
-        }
-        el.innerText = msg;
-        setTimeout(() => { el.style.opacity = '0.5'; }, 3000);
-        setTimeout(() => { el.style.opacity = '1'; }, 0);
-    }
-})();`.trim();
-                navigator.clipboard.writeText(script);
-                alert('Advanced Tampermonkey script copied to clipboard! Paste it into a new Tampermonkey script on the source project.');
-              }}
-            >
-              Copy Advanced Auto-Sync Script
-            </button>
-          </div>
-        </section>
-      </div>
-
-      {/* Sync Source Configuration */}
-      <section className="admin-card-v2 full-width-v2" style={{ marginBottom: '24px' }}>
-        <div className="card-header-v2">
-          <ShieldCheck size={20} />
-          <h2>Sync Source Configuration</h2>
-        </div>
-        <form onSubmit={handleSaveSyncConfig} className="admin-form-v2">
-          <div className="form-row-v2">
-            <div className="form-group-v2">
-              <label>Source Media URL (Page with Token)</label>
-              <input
-                type="url"
-                value={syncConfig.source_url}
-                onChange={(e) => setSyncConfig({ ...syncConfig, source_url: e.target.value })}
-                placeholder="https://members.freelancerservice.site/content/p/id/173/"
-                required
-              />
-            </div>
-            <div className="form-group-v2">
-              <label>Source Login URL</label>
-              <input
-                type="url"
-                value={syncConfig.login_url}
-                onChange={(e) => setSyncConfig({ ...syncConfig, login_url: e.target.value })}
-                placeholder="https://members.freelancerservice.site/login"
-                required
-              />
-            </div>
-          </div>
-          <div className="form-row-v2">
-            <div className="form-group-v2">
-              <label>Source Account Email/Username</label>
-              <input
-                type="text"
-                value={syncConfig.amember_login}
-                onChange={(e) => setSyncConfig({ ...syncConfig, amember_login: e.target.value })}
-                placeholder="vigneshsingaravelan@kyda.in"
-                required
-              />
-            </div>
-            <div className="form-group-v2">
-              <label>Source Account Password</label>
-              <input
-                type="password"
-                value={syncConfig.amember_pass}
-                onChange={(e) => setSyncConfig({ ...syncConfig, amember_pass: e.target.value })}
-                placeholder="••••••••"
-                required
-              />
-            </div>
-          </div>
-          <button type="submit" className="admin-submit-btn-v2" disabled={syncConfigLoading}>
-            {syncConfigLoading ? 'Saving...' : 'Save Configuration'}
+        <nav className="admin-sub-nav">
+          <button className={`nav-item-v2 ${activeSection === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveSection('dashboard')}>
+            <LayoutDashboard size={18} /> Overview
           </button>
-          <div style={{ marginTop: '12px', fontSize: '13px', color: '#666' }}>
-            <AlertCircle size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-            Last updated: {syncConfig.updated_at ? new Date(syncConfig.updated_at).toLocaleString() : 'Never'}
-          </div>
-        </form>
-      </section>
+          <button className={`nav-item-v2 ${activeSection === 'users' ? 'active' : ''}`} onClick={() => setActiveSection('users')}>
+            <Users size={18} /> Users
+          </button>
+          <button className={`nav-item-v2 ${activeSection === 'sync' ? 'active' : ''}`} onClick={() => setActiveSection('sync')}>
+            <Zap size={18} /> Tool Sync
+          </button>
+          <button className={`nav-item-v2 ${activeSection === 'settings' ? 'active' : ''}`} onClick={() => setActiveSection('settings')}>
+            <Settings size={18} /> Config
+          </button>
+        </nav>
+      </div>
 
-      {/* Users Table Card */}
-      <section className="admin-card-v2 full-width-v2">
-        <div className="card-header-v2" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Users size={20} />
-            <h2>User Management</h2>
-            <button
-              className="mgmt-btn"
-              onClick={handleDownloadExcel}
-              style={{
-                background: '#0b9d86',
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 12px',
-                fontSize: '13px'
-              }}
-            >
-              <Download size={16} />
-              Download Excel
-            </button>
+      {/* Main Content Area */}
+      <div className="admin-main-content-v2">
+        <header className="admin-header-v2">
+          <div className="header-info-v2">
+            <h1>{activeSection.charAt(0).toUpperCase() + activeSection.slice(1)}</h1>
+            <p>Bharat Tools Hub Administrative Suite</p>
           </div>
+          <div className="header-meta-v2">
+            <div className="status-pill-v2 online">
+              <Activity size={12} /> Live
+            </div>
+          </div>
+        </header>
 
-          <div className="admin-tabs-v2">
-            <button
-              className={`admin-tab-btn ${activeTab === 'active' ? 'active' : ''}`}
-              onClick={() => setActiveTab('active')}
-            >
-              <UserCheck size={16} />
-              Active Users
-            </button>
-            <button
-              className={`admin-tab-btn ${activeTab === 'expired' ? 'active' : ''}`}
-              onClick={() => setActiveTab('expired')}
-            >
-              <UserX size={16} />
-              All Expired
-            </button>
-            <button
-              className={`admin-tab-btn ${activeTab === 'today' ? 'active' : ''}`}
-              onClick={() => setActiveTab('today')}
-            >
-              <Timer size={16} />
-              Expired Today
-            </button>
-            <button
-              className={`admin-tab-btn ${activeTab === 'demo' ? 'active' : ''}`}
-              onClick={() => setActiveTab('demo')}
-            >
-              <Users size={16} />
-              Demo History
-            </button>
-          </div>
+        <div className="admin-view-container-v2 pulse-in">
+          {activeSection === 'dashboard' && (
+            <div className="dashboard-grid-v2">
+              <div className="admin-v1-stats-grid">
+                <StatCard title="Total Users" value={users.length} trend="Live" icon={<Users color="#3b82f6" />} />
+                <StatCard title="Active Now" value={users.filter(u => u.is_logged_in).length} trend="Realtime" icon={<Activity color="#10b981" />} />
+                <StatCard title="Sync Health" value={syncStatus.message} trend="Healthy" icon={<Zap color="#f59e0b" />} />
+                <StatCard title="Last Pulse" value={syncStatus.lastSuccess ? new Date(syncStatus.lastSuccess).toLocaleTimeString() : 'N/A'} trend="Auto" icon={<Clock color="#6366f1" />} />
+              </div>
+
+              <div className="quick-actions-view-v2">
+                <h3>Priority Actions</h3>
+                <div className="quick-actions-grid-v2">
+                  <div className="action-card-v2" onClick={() => setActiveSection('users')}>
+                    <UserPlus size={24} /> <span>Add User</span>
+                  </div>
+                  <div className="action-card-v2" onClick={() => setActiveSection('sync')}>
+                    <RefreshCw size={24} /> <span>Sync Tools</span>
+                  </div>
+                  <div className="action-card-v2" onClick={handleManualSync}>
+                    <Zap size={24} /> <span>Global Sync</span>
+                  </div>
+                  <div className="action-card-v2" onClick={handleDownloadExcel}>
+                    <Download size={24} /> <span>Export XLSX</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'users' && (
+            <div className="users-vertical-layout-v2">
+              <section className="admin-card-v2">
+                <div className="card-header-v2"><UserPlus size={20} /> <h2>Account Enrollment</h2></div>
+                <form className="admin-form-v2" onSubmit={handleCreate}>
+                  <div className="form-row-v2">
+                    <input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                    <input placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+                  </div>
+                  <div className="form-row-v2">
+                    <input placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+                    <input placeholder="Phone" type="tel" value={form.mobile_number} onChange={(e) => setForm({ ...form, mobile_number: e.target.value })} />
+                  </div>
+                  <div className="form-row-v2">
+                    <input type="number" placeholder="Months" value={form.months} onChange={(e) => setForm({ ...form, months: e.target.value })} />
+                    <input type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button type="submit" className="admin-submit-btn" disabled={loading} style={{ flex: 2 }}>{loading ? '...' : 'Create'}</button>
+                    <button type="button" className="admin-submit-btn demo-btn-v2" style={{ flex: 1 }} onClick={() => {
+                      const dt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+                      setForm({ ...form, months: 0, expiresAt: dt.slice(0, 16), is_demo: true });
+                    }}>15m Demo</button>
+                  </div>
+                </form>
+              </section>
+
+              <section className="admin-card-v2 full-width-v2">
+                <div className="card-header-v2" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Users size={20} /> <h2>Database</h2></div>
+                  <div className="admin-tabs-v2">
+                    {['active', 'expired', 'demo'].map(t => (
+                      <button key={t} className={`admin-tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t.toUpperCase()}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="table-responsive-v2">
+                  <table className="admin-table-v2">
+                    <thead>
+                      <tr><th>User</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                      {users.filter(u => {
+                        const isExp = !u.access_expires_at || new Date(u.access_expires_at) < new Date();
+                        if (activeTab === 'active') return !isExp;
+                        if (activeTab === 'demo') return u.is_demo;
+                        return isExp;
+                      }).map(u => (
+                        <tr key={u.id}>
+                          <td><div className="user-info-v2"><strong>{u.username}</strong><span>{u.email}</span></div></td>
+                          <td>{u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'N/A'}</td>
+                          <td><span className={`status-badge-v2 ${u.is_logged_in ? 'online' : 'offline'}`}>{u.is_logged_in ? 'On' : 'Off'}</span></td>
+                          <td>
+                            <button className="mgmt-btn" onClick={() => updateAccess(u.id, 1)}>+1m</button>
+                            <button className="mgmt-btn-reset" onClick={() => resetSession(u.id)}>Reset</button>
+                            <button className="mgmt-btn-del" onClick={() => removeUser(u.id)}><Trash2 size={14} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeSection === 'sync' && (
+            <div className="sync-horizontal-layout-v2">
+              <section className="admin-card-v2">
+                <div className="card-header-v2"><Key size={20} /> <h2>Manual Helium Sync</h2></div>
+                <textarea rows={8} value={heliumSessionJson} onChange={(e) => setHeliumSessionJson(e.target.value)} placeholder="Paste session..." />
+                <button className="sync-btn-v2" onClick={handleSaveHeliumSession} disabled={heliumSaving}>Sync Now</button>
+              </section>
+              <section className="admin-card-v2">
+                <div className="card-header-v2"><Zap size={20} /> <h2>Worker Status</h2></div>
+                <div className="status-grid-v2">
+                  <div className="status-item-v2"><label>Last Sync:</label> <span>{syncStatus.lastSuccess ? new Date(syncStatus.lastSuccess).toLocaleString() : 'Never'}</span></div>
+                  <div className="status-item-v2"><label>Result:</label> <span className={syncStatus.message === 'Success' ? 'healthy' : 'error'}>{syncStatus.message}</span></div>
+                </div>
+                <button className="admin-submit-btn" onClick={handleManualSync} disabled={syncStatus.isSyncing}>Force Update</button>
+              </section>
+            </div>
+          )}
+
+          {activeSection === 'settings' && (
+            <div className="settings-modular-layout-v2">
+              <section className="admin-card-v2">
+                <div className="card-header-v2"><ShieldCheck size={20} /> <h2>Gateway Config</h2></div>
+                <form onSubmit={handleSaveSyncConfig} className="admin-form-v2">
+                  <input placeholder="Source URL" value={syncConfig.source_url} onChange={e => setSyncConfig({ ...syncConfig, source_url: e.target.value })} />
+                  <input placeholder="Login URL" value={syncConfig.login_url} onChange={e => setSyncConfig({ ...syncConfig, login_url: e.target.value })} />
+                  <button type="submit" className="admin-submit-btn">Save Config</button>
+                </form>
+              </section>
+              <section className="admin-card-v2">
+                <div className="card-header-v2"><Upload size={20} /> <h2>Extension Deploy</h2></div>
+                <input type="file" onChange={e => setExtensionFile(e.target.files[0])} />
+                <button className="admin-submit-btn" onClick={handleExtensionUpload} disabled={uploading}>Upload Zip</button>
+                {lastUploaded && <p className="last-uploaded-meta-v2">Last: {new Date(lastUploaded).toLocaleString()}</p>}
+              </section>
+            </div>
+          )}
         </div>
+      </div>
+    </div>
+  );
+}
 
-        <div className="table-responsive-v2">
-          <table className="admin-table-v2">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Mobile</th>
-                <th>Access Expiry</th>
-                <th>Status</th>
-                <th>Management Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users
-                .filter(u => {
-                  const now = new Date();
-                  const isExpired = !u.access_expires_at || new Date(u.access_expires_at) < now;
-
-                  if (activeTab === 'active') return !isExpired;
-
-                  if (activeTab === 'today') {
-                    if (!u.access_expires_at) return false;
-                    const expiryDate = new Date(u.access_expires_at);
-                    const isSameDay = expiryDate.toDateString() === now.toDateString();
-                    return isExpired && isSameDay;
-                  }
-
-                  if (activeTab === 'demo') {
-                    return u.is_demo === 1;
-                  }
-
-                  return isExpired;
-                })
-                .map((u) => (
-                  <tr key={u.id}>
-                    <td><div className="user-cell-v2">{u.username}</div></td>
-                    <td>{u.email}</td>
-                    <td>{u.mobile_number || 'N/A'}</td>
-                    <td>
-                      <div className="expiry-cell-v2">
-                        <Calendar size={14} />
-                        {u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString() : 'Inactive'}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{
-                        fontSize: '12px',
-                        padding: '4px 8px',
-                        borderRadius: '12px',
-                        background: u.is_logged_in ? '#fee2e2' : '#dcfce7',
-                        color: u.is_logged_in ? '#ef4444' : '#166534'
-                      }}>
-                        {u.is_logged_in ? 'Logged In' : 'Offline'}
-                      </span>
-                    </td>
-                    <td className="action-cell-v2">
-                      <button className="mgmt-btn extend-btn" onClick={() => updateAccess(u.id, 1)}>+1 mo</button>
-                      <button className="mgmt-btn" style={{ background: '#6366f1', color: 'white' }} onClick={() => handleGrantDemo(u.id)}>15m Demo</button>
-                      <button className="mgmt-btn date-btn" onClick={() => updateAccessDate(u.id, u.access_expires_at)}>Set Date</button>
-                      <button className="mgmt-btn" style={{ background: '#f59e0b', color: 'white' }} onClick={() => resetSession(u.id)}>Reset Session</button>
-                      <button className="mgmt-btn revoke-btn" onClick={() => updateAccess(u.id, 0)}>Revoke</button>
-                      <button className="mgmt-btn delete-btn" onClick={() => removeUser(u.id)}><Trash2 size={16} /></button>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+function StatCard({ title, value, trend, icon }) {
+  return (
+    <div className="admin-v1-card stat-card-v1">
+      <div className="stat-icon-v1">{icon}</div>
+      <div className="stat-content-v1">
+        <span className="stat-title-v1">{title}</span>
+        <div className="stat-value-v1">{value}</div>
+        <div className="stat-trend-v1">{trend}</div>
+      </div>
     </div>
   );
 }
