@@ -201,10 +201,11 @@ const upload = multer({
 
 // --- Helpers ---
 function createToken(user) {
+  const expiresIn = user.role === 'admin' ? '7d' : '5m';
   return jwt.sign(
     { id: user.id, email: user.email, username: user.username, role: user.role },
     JWT_SECRET,
-    { expiresIn: '5m' }
+    { expiresIn }
   );
 }
 

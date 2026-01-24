@@ -50,15 +50,16 @@ export function AuthProvider({ children }) {
           }
 
           const rememberMe = parsed.rememberMe || false;
-          // Even if rememberMe is true, the user wants 5 mins session. 
-          // However, usually rememberMe refers to persistent login across browser closes.
-          // For this specific request, I will strictly enforce 5 mins inactivity logout regardless.
-          const expiryLimit = SESSION_EXPIRY_DEFAULT;
+          const isAdmin = parsed.user?.role === 'admin';
+
+          // Admins don't expire via inactivity here. 
+          // Regular users expire after 5 mins.
+          const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
 
           const timeSinceLastActivity = now - lastActivity;
 
           if (timeSinceLastActivity > expiryLimit) {
-            console.warn('[AuthDebug] Session expired on init.', { timeSinceLastActivity });
+            console.warn('[AuthDebug] Session expired on init.', { timeSinceLastActivity, isAdmin });
             logout();
           } else {
             if (parsed.token) {
@@ -89,7 +90,9 @@ export function AuthProvider({ children }) {
           const parsed = JSON.parse(stored);
           const now = Date.now();
           const lastActivity = parsed.lastActivity || 0;
-          if (now - lastActivity > SESSION_EXPIRY_DEFAULT) {
+          const isAdmin = parsed.user?.role === 'admin';
+
+          if (!isAdmin && (now - lastActivity > SESSION_EXPIRY_DEFAULT)) {
             console.warn('[AuthDebug] Background check: Session expired.');
             logout();
           }
