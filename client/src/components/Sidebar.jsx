@@ -9,7 +9,8 @@ import {
     HelpCircle,
     Download,
     LogOut,
-    ChevronRight
+    ChevronRight,
+    Activity
 } from 'lucide-react';
 
 const Sidebar = ({ logout, user }) => {
