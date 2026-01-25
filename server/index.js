@@ -330,7 +330,13 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    // Set is_logged_in = 1 and update last_ip
+    // Set is_logged_in = 1 and update last_ip (Only if NOT admin for strictness, 
+    // but tracking status for admins is usually okay. However, to 'EXCLUDE' them 
+    // completely from this logic as requested, we'll only update for non-admins 
+    // or simply skip the blocking check above.)
+
+    // Update: We will update is_logged_in for everyone so they show as active, 
+    // but the blocking logic above STRICTLY bypasses admins.
     await db.execute({
       sql: `UPDATE users SET is_logged_in = 1, last_ip = ? WHERE id = ?`,
       args: [clientIp, user.id]
