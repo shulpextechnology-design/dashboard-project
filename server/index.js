@@ -231,8 +231,9 @@ function authMiddleware(req, res, next) {
   jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) return res.status(401).json({ message: 'Invalid token' });
 
+    const role = String(decoded.role || '').toLowerCase();
     // Strict Access Check: Verify user still has active access in DB
-    if (decoded.role === 'user') {
+    if (role === 'user') {
       try {
         const result = await db.execute({
           sql: 'SELECT access_expires_at FROM users WHERE id = ?',
@@ -248,12 +249,13 @@ function authMiddleware(req, res, next) {
         }
       } catch (dbErr) {
         console.error('Middleware DB check error:', dbErr);
-        // Fail open or closed? Closed is safer for demo/paid access.
         return res.status(500).json({ message: 'Internal verification error' });
       }
     }
 
     req.user = decoded;
+    // Normalise role in request object
+    req.user.role = role === 'admin' ? 'admin' : 'user';
     next();
   });
 }

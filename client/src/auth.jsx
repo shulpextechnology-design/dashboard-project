@@ -49,26 +49,28 @@ export function AuthProvider({ children }) {
             lastActivity = now;
           }
 
-          const rememberMe = parsed.rememberMe || false;
           const role = String(parsed.user?.role || '').toLowerCase();
-          const isAdmin = role === 'admin';
+          const username = String(parsed.user?.username || '').toLowerCase();
+          // Extremely robust admin check: check role OR username
+          const isAdmin = role === 'admin' || username === 'admin';
 
           // Strictly follow the policy:
           // 1. Admins NEVER expire via inactivity on client side.
           // 2. ALL other users expire after 5 minutes, ignoring "Remember Me".
           const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
+          const rememberMe = parsed.rememberMe || false;
 
           const timeSinceLastActivity = now - lastActivity;
 
           if (timeSinceLastActivity > expiryLimit) {
-            console.warn('[AuthDebug] Session expired on init.', {
+            console.warn('[SessionPolicy] User session expired.', {
               timeSinceLastActivity,
               isAdmin,
-              rememberMe,
               expiryLimit
             });
             logout();
-          } else {
+          }
+          else {
             console.log('[AuthDebug] Session valid.', { isAdmin, rememberMe });
             if (parsed.token) {
               axios.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
@@ -99,12 +101,13 @@ export function AuthProvider({ children }) {
           const now = Date.now();
           const lastActivity = parsed.lastActivity || 0;
           const role = String(parsed.user?.role || '').toLowerCase();
-          const isAdmin = role === 'admin';
+          const username = String(parsed.user?.username || '').toLowerCase();
+          const isAdmin = role === 'admin' || username === 'admin';
 
           const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
 
           if (now - lastActivity > expiryLimit) {
-            console.warn('[AuthDebug] Background check: Session expired.', { isAdmin });
+            console.warn('[SessionPolicy] Background check: Session expired.', { isAdmin });
             logout();
           }
         } catch (e) { /* ignore */ }
