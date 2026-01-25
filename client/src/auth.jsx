@@ -50,18 +50,32 @@ export function AuthProvider({ children }) {
           }
 
           const rememberMe = parsed.rememberMe || false;
-          const isAdmin = parsed.user?.role === 'admin';
+          const role = String(parsed.user?.role || '').toLowerCase();
+          const isAdmin = role === 'admin';
 
-          // Admins don't expire via inactivity here. 
-          // Regular users expire after 5 mins.
-          const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
+          // Robust Expiry Logic:
+          // 1. Admins NEVER expire via inactivity on client side.
+          // 2. If RememberMe is on, use 30 days.
+          // 3. Otherwise, use 5 minutes.
+          let expiryLimit = SESSION_EXPIRY_DEFAULT;
+          if (isAdmin) {
+            expiryLimit = Infinity;
+          } else if (rememberMe) {
+            expiryLimit = SESSION_EXPIRY_REMEMBER;
+          }
 
           const timeSinceLastActivity = now - lastActivity;
 
           if (timeSinceLastActivity > expiryLimit) {
-            console.warn('[AuthDebug] Session expired on init.', { timeSinceLastActivity, isAdmin });
+            console.warn('[AuthDebug] Session expired on init.', {
+              timeSinceLastActivity,
+              isAdmin,
+              rememberMe,
+              expiryLimit
+            });
             logout();
           } else {
+            console.log('[AuthDebug] Session valid.', { isAdmin, rememberMe });
             if (parsed.token) {
               axios.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
             }
@@ -69,7 +83,7 @@ export function AuthProvider({ children }) {
             setAuthState({
               user: parsed.user,
               token: parsed.token,
-              rememberMe: parsed.rememberMe
+              rememberMe: rememberMe
             });
           }
         }
@@ -90,10 +104,19 @@ export function AuthProvider({ children }) {
           const parsed = JSON.parse(stored);
           const now = Date.now();
           const lastActivity = parsed.lastActivity || 0;
-          const isAdmin = parsed.user?.role === 'admin';
+          const role = String(parsed.user?.role || '').toLowerCase();
+          const isAdmin = role === 'admin';
+          const rememberMe = parsed.rememberMe || false;
 
-          if (!isAdmin && (now - lastActivity > SESSION_EXPIRY_DEFAULT)) {
-            console.warn('[AuthDebug] Background check: Session expired.');
+          let expiryLimit = SESSION_EXPIRY_DEFAULT;
+          if (isAdmin) {
+            expiryLimit = Infinity;
+          } else if (rememberMe) {
+            expiryLimit = SESSION_EXPIRY_REMEMBER;
+          }
+
+          if (now - lastActivity > expiryLimit) {
+            console.warn('[AuthDebug] Background check: Session expired.', { isAdmin, rememberMe });
             logout();
           }
         } catch (e) { /* ignore */ }
@@ -105,7 +128,11 @@ export function AuthProvider({ children }) {
         if (e.newValue) {
           try {
             const parsed = JSON.parse(e.newValue);
-            setAuthState({ user: parsed.user, token: parsed.token });
+            setAuthState({
+              user: parsed.user,
+              token: parsed.token,
+              rememberMe: parsed.rememberMe || false
+            });
             if (parsed.token) {
               axios.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
             }
