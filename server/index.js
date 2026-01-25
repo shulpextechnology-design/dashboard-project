@@ -301,14 +301,24 @@ app.post('/api/auth/login', async (req, res) => {
     const isAdmin = inputId === 'admin' || inputId === 'admin@example.com' || dbUsername === 'admin' || dbRole === 'admin';
 
     // Extract IP Address
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (clientIp && typeof clientIp === 'string') {
+      // Handle comma-separated list from proxies (take first IP)
+      if (clientIp.includes(',')) {
+        clientIp = clientIp.split(',')[0].trim();
+      }
+      // Normalize IPv6 mapped IPv4
+      if (clientIp.startsWith('::ffff:')) {
+        clientIp = clientIp.replace('::ffff:', '');
+      }
+    }
 
     console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] LastIP[${user.last_ip}]`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
-      // If same IP, allow re-login (handles browser refresh/session loss)
-      if (user.last_ip && user.last_ip === clientIp) {
-        console.log(`Allowing re-login for ${user.username} from same IP: ${clientIp}`);
+      // If same IP OR if no last_ip recorded yet, allow re-login
+      if (!user.last_ip || user.last_ip === clientIp) {
+        console.log(`Allowing re-login/session recovery for ${user.username} (IP: ${clientIp})`);
       } else {
         console.log(`Blocking login for ${user.username} - already logged in on IP: ${user.last_ip}, new IP: ${clientIp}`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
