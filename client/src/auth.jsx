@@ -53,16 +53,10 @@ export function AuthProvider({ children }) {
           const role = String(parsed.user?.role || '').toLowerCase();
           const isAdmin = role === 'admin';
 
-          // Robust Expiry Logic:
+          // Strictly follow the policy:
           // 1. Admins NEVER expire via inactivity on client side.
-          // 2. If RememberMe is on, use 30 days.
-          // 3. Otherwise, use 5 minutes.
-          let expiryLimit = SESSION_EXPIRY_DEFAULT;
-          if (isAdmin) {
-            expiryLimit = Infinity;
-          } else if (rememberMe) {
-            expiryLimit = SESSION_EXPIRY_REMEMBER;
-          }
+          // 2. ALL other users expire after 5 minutes, ignoring "Remember Me".
+          const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
 
           const timeSinceLastActivity = now - lastActivity;
 
@@ -106,17 +100,11 @@ export function AuthProvider({ children }) {
           const lastActivity = parsed.lastActivity || 0;
           const role = String(parsed.user?.role || '').toLowerCase();
           const isAdmin = role === 'admin';
-          const rememberMe = parsed.rememberMe || false;
 
-          let expiryLimit = SESSION_EXPIRY_DEFAULT;
-          if (isAdmin) {
-            expiryLimit = Infinity;
-          } else if (rememberMe) {
-            expiryLimit = SESSION_EXPIRY_REMEMBER;
-          }
+          const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
 
           if (now - lastActivity > expiryLimit) {
-            console.warn('[AuthDebug] Background check: Session expired.', { isAdmin, rememberMe });
+            console.warn('[AuthDebug] Background check: Session expired.', { isAdmin });
             logout();
           }
         } catch (e) { /* ignore */ }
