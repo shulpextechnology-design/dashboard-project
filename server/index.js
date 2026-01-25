@@ -32,7 +32,8 @@ async function initDb() {
         access_expires_at TEXT,
         mobile_number TEXT,
         is_logged_in INTEGER DEFAULT 0,
-        is_demo INTEGER DEFAULT 0
+        is_demo INTEGER DEFAULT 0,
+        last_ip TEXT
       )
     `);
 
@@ -91,6 +92,8 @@ async function initDb() {
     // Seed/Migrate as needed...
     // Migration: Add is_demo column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
+    // Migration: Add last_ip column (users)
+    try { await db.execute('ALTER TABLE users ADD COLUMN last_ip TEXT'); } catch (e) { }
 
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
@@ -297,11 +300,19 @@ app.post('/api/auth/login', async (req, res) => {
     // Admin if input is 'admin' OR if database says role/username is 'admin'
     const isAdmin = inputId === 'admin' || inputId === 'admin@example.com' || dbUsername === 'admin' || dbRole === 'admin';
 
-    console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}]`);
+    // Extract IP Address
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] LastIP[${user.last_ip}]`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
-      console.log(`Blocking login for ${user.username} - already logged in`);
-      return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
+      // If same IP, allow re-login (handles browser refresh/session loss)
+      if (user.last_ip && user.last_ip === clientIp) {
+        console.log(`Allowing re-login for ${user.username} from same IP: ${clientIp}`);
+      } else {
+        console.log(`Blocking login for ${user.username} - already logged in on IP: ${user.last_ip}, new IP: ${clientIp}`);
+        return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
+      }
     }
 
     // If normal user, require active access and check expiry
@@ -319,10 +330,10 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    // Set is_logged_in = 1
+    // Set is_logged_in = 1 and update last_ip
     await db.execute({
-      sql: `UPDATE users SET is_logged_in = 1 WHERE id = ?`,
-      args: [user.id]
+      sql: `UPDATE users SET is_logged_in = 1, last_ip = ? WHERE id = ?`,
+      args: [clientIp, user.id]
     });
 
     const token = createToken(user);
