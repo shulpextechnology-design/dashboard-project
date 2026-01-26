@@ -70,12 +70,16 @@ const Sidebar = ({ logout, user }) => {
                 <button
                     onClick={async () => {
                         try {
-                            await fetch('/api/auth/logout', {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Bearer ${localStorage.getItem('token')}` // Assuming token is in localStorage
-                                }
-                            });
+                            const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+                            const token = auth.token;
+                            if (token) {
+                                await fetch('/api/auth/logout', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${token}`
+                                    }
+                                });
+                            }
                         } catch (e) {
                             console.error("Logout API failed", e);
                         }

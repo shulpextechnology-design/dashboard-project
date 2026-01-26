@@ -54,8 +54,11 @@ export function AuthProvider({ children }) {
 
           const role = String(parsed.user?.role || '').toLowerCase();
           const username = String(parsed.user?.username || '').toLowerCase();
-          // Extremely robust admin check: check role OR username
-          const isAdmin = role === 'admin' || username === 'admin';
+          const email = String(parsed.user?.email || '').toLowerCase();
+          const userId = parsed.user?.id;
+
+          // Extremely robust admin check: check role, username, email, or ID
+          const isAdmin = role === 'admin' || username === 'admin' || email === 'admin@example.com' || userId === 1;
 
           // Strictly follow the policy:
           // 1. Admins NEVER expire via inactivity on client side.
@@ -105,7 +108,10 @@ export function AuthProvider({ children }) {
           const lastActivity = parsed.lastActivity || 0;
           const role = String(parsed.user?.role || '').toLowerCase();
           const username = String(parsed.user?.username || '').toLowerCase();
-          const isAdmin = role === 'admin' || username === 'admin';
+          const email = String(parsed.user?.email || '').toLowerCase();
+          const userId = parsed.user?.id;
+
+          const isAdmin = role === 'admin' || username === 'admin' || email === 'admin@example.com' || userId === 1;
 
           const expiryLimit = isAdmin ? Infinity : SESSION_EXPIRY_DEFAULT;
 
