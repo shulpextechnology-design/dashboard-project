@@ -498,6 +498,8 @@ export default function AdminPage() {
                 <form onSubmit={handleSaveSyncConfig} className="admin-form-v2">
                   <input placeholder="Source URL" value={syncConfig.source_url} onChange={e => setSyncConfig({ ...syncConfig, source_url: e.target.value })} />
                   <input placeholder="Login URL" value={syncConfig.login_url} onChange={e => setSyncConfig({ ...syncConfig, login_url: e.target.value })} />
+                  <input placeholder="Username" value={syncConfig.amember_login} onChange={e => setSyncConfig({ ...syncConfig, amember_login: e.target.value })} />
+                  <input placeholder="Password" type="password" value={syncConfig.amember_pass} onChange={e => setSyncConfig({ ...syncConfig, amember_pass: e.target.value })} />
                   <button type="submit" className="admin-submit-btn">Save Config</button>
                 </form>
               </section>
