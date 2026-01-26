@@ -128,7 +128,7 @@ export default function LoginPage() {
       </div>
       <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5, textAlign: 'right' }}>
         Server: {backendStatus}<br />
-        v1.2.0-auth-fix
+        v1.2.1-admin-fix
       </div>
     </div>
   );

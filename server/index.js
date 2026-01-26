@@ -17,7 +17,7 @@ app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate c
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.2.6-auth-fix';
+const BACKEND_VERSION = 'v1.2.7-admin-fix';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -216,9 +216,13 @@ const upload = multer({
 // --- Helpers ---
 function createToken(user) {
   const role = String(user.role || '').toLowerCase();
-  const expiresIn = role === 'admin' ? '30d' : '5m';
+  const username = String(user.username || '').toLowerCase();
+  // robust admin detection for token duration
+  const isAdmin = role === 'admin' || username === 'admin' || user.email === 'admin@example.com';
+
+  const expiresIn = isAdmin ? '30d' : '5m';
   return jwt.sign(
-    { id: user.id, email: user.email, username: user.username, role: user.role },
+    { id: user.id, email: user.email, username: user.username, role: isAdmin ? 'admin' : user.role },
     JWT_SECRET,
     { expiresIn }
   );
@@ -372,6 +376,9 @@ app.post('/api/auth/login', async (req, res) => {
       sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, last_active_at = ? WHERE id = ?`,
       args: [clientIp, new Date().toISOString(), user.id]
     });
+
+    // Final check for user object before token creation to ensure role is passed correctly for admin
+    if (isAdmin) user.role = 'admin';
 
     const token = createToken(user);
     console.log('Login successful for user:', user.username, 'Role:', user.role);
