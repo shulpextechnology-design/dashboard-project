@@ -13,10 +13,11 @@ const { CookieJar } = require('tough-cookie');
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate client IP
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.2.5-sync-TIMEOUT-FIX';
+const BACKEND_VERSION = 'v1.2.6-auth-fix';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -92,8 +93,8 @@ async function initDb() {
     // Seed/Migrate as needed...
     // Migration: Add is_demo column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
-    // Migration: Add last_ip column (users)
-    try { await db.execute('ALTER TABLE users ADD COLUMN last_ip TEXT'); } catch (e) { }
+    // Migration: Add last_active_at column (users)
+    try { await db.execute('ALTER TABLE users ADD COLUMN last_active_at TEXT'); } catch (e) { }
 
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
@@ -236,7 +237,7 @@ function authMiddleware(req, res, next) {
     if (role === 'user') {
       try {
         const result = await db.execute({
-          sql: 'SELECT access_expires_at FROM users WHERE id = ?',
+          sql: 'SELECT access_expires_at, last_active_at FROM users WHERE id = ?',
           args: [decoded.id]
         });
         const user = result.rows[0];
@@ -246,6 +247,16 @@ function authMiddleware(req, res, next) {
         const expires = new Date(user.access_expires_at);
         if (Number.isNaN(expires.getTime()) || new Date() > expires) {
           return res.status(403).json({ message: 'Access expired' });
+        }
+
+        // Refresh last_active_at in background if more than 2 minutes passed
+        const now = new Date();
+        const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
+        if (!lastActive || (now - lastActive) > 120000) {
+          db.execute({
+            sql: 'UPDATE users SET last_active_at = ? WHERE id = ?',
+            args: [now.toISOString(), decoded.id]
+          }).catch(e => console.error('[Activity] Failed to update heartbeat:', e));
         }
       } catch (dbErr) {
         console.error('Middleware DB check error:', dbErr);
@@ -319,12 +330,18 @@ app.post('/api/auth/login', async (req, res) => {
     console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] LastIP[${user.last_ip}]`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
-      // If same IP OR if no last_ip recorded yet, allow re-login
-      if (!user.last_ip || user.last_ip === clientIp) {
-        console.log(`Allowing re-login/session recovery for ${user.username} (IP: ${clientIp})`);
+      const now = new Date();
+      const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
+      const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
+
+      // Allow if same IP OR if the session is stale (> 5 mins)
+      // This follows the requirement: allow multiple logins on same device (IP), 
+      // but block and say "Authentication error." if on a different IP.
+      if (!user.last_ip || user.last_ip === clientIp || minutesSinceActive > 5) {
+        console.log(`Allowing session for ${user.username} (IP: ${clientIp}, Stale: ${minutesSinceActive > 5})`);
       } else {
-        console.log(`Blocking login for ${user.username} - already logged in on IP: ${user.last_ip}, new IP: ${clientIp}`);
-        return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
+        console.log(`Blocking login for ${user.username} - IP mismatch: ${user.last_ip} vs ${clientIp}`);
+        return res.status(403).json({ message: 'Authentication error.' });
       }
     }
 
@@ -350,9 +367,10 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Update: We will update is_logged_in for everyone so they show as active, 
     // but the blocking logic above STRICTLY bypasses admins.
+    // Set is_logged_in = 1 and update last_ip and last_active_at
     await db.execute({
-      sql: `UPDATE users SET is_logged_in = 1, last_ip = ? WHERE id = ?`,
-      args: [clientIp, user.id]
+      sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, last_active_at = ? WHERE id = ?`,
+      args: [clientIp, new Date().toISOString(), user.id]
     });
 
     const token = createToken(user);

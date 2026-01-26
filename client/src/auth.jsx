@@ -17,6 +17,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const logout = () => {
+    // Notify server (fire and forget)
+    axios.post('/api/auth/logout').catch(() => { });
+
     console.log('[AuthDebug] Session expired or user logged out.');
     setAuthState({ user: null, token: null });
     localStorage.removeItem('auth');

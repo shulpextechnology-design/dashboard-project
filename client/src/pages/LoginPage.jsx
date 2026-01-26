@@ -41,7 +41,7 @@ export default function LoginPage() {
         setError('Server timeout. Please try again later.');
       } else {
         const msg = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
-        setError(`${msg} ${err.response ? `(Status: ${err.response.status})` : '(Network Error)'}`);
+        setError(msg);
       }
     } finally {
       setLoading(false);
@@ -128,7 +128,7 @@ export default function LoginPage() {
       </div>
       <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5, textAlign: 'right' }}>
         Server: {backendStatus}<br />
-        v1.1.1-final-sync
+        v1.2.0-auth-fix
       </div>
     </div>
   );
