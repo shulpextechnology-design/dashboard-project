@@ -293,6 +293,19 @@ export default function AdminPage() {
         XLSX.writeFile(workbook, `Users_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
+    function StatCard({ title, value, trend, icon }) {
+        return (
+            <div className="admin-v1-card stat-card-v1">
+                <div className="stat-icon-v1">{icon}</div>
+                <div className="stat-content-v1">
+                    <span className="stat-title-v1">{title}</span>
+                    <div className="stat-value-v1">{value}</div>
+                    <div className="stat-trend-v1">{trend}</div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="admin-page-v2 unified-dashboard-v2">
             {/* Sidebar Navigation */}
@@ -519,19 +532,6 @@ export default function AdminPage() {
                         </div>
                     )}
                 </div>
-            </div>
-        </div>
-    );
-}
-
-function StatCard({ title, value, trend, icon }) {
-    return (
-        <div className="admin-v1-card stat-card-v1">
-            <div className="stat-icon-v1">{icon}</div>
-            <div className="stat-content-v1">
-                <span className="stat-title-v1">{title}</span>
-                <div className="stat-value-v1">{value}</div>
-                <div className="stat-trend-v1">{trend}</div>
             </div>
         </div>
     );

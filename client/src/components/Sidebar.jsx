@@ -46,6 +46,7 @@ const Sidebar = ({ logout, user, mobileOpen, setMobileOpen }) => {
                         T
                     </div>
                     Bharat Tools Hub
+                    <span style={{ fontSize: '10px', marginLeft: '5px', opacity: 0.5 }}>v1.3.5</span>
                 </div>
 
                 <nav className="sidebar-nav">
