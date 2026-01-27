@@ -31,8 +31,20 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    // Generate or retrieve a persistent browser ID to allow same-browser re-logins
+    let browserId = localStorage.getItem('browserId');
+    if (!browserId) {
+      browserId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('browserId', browserId);
+    }
+
     try {
-      const res = await axios.post('/api/auth/login', { emailOrUsername, password }, { timeout: 15000 });
+      const res = await axios.post('/api/auth/login', {
+        emailOrUsername,
+        password,
+        browserId
+      }, { timeout: 15000 });
       login(res.data, rememberMe);
       navigate('/');
     } catch (err) {

@@ -95,6 +95,8 @@ async function initDb() {
     try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
     // Migration: Add last_active_at column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN last_active_at TEXT'); } catch (e) { }
+    // Migration: Add browser_id column (users)
+    try { await db.execute('ALTER TABLE users ADD COLUMN browser_id TEXT'); } catch (e) { }
 
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
@@ -214,7 +216,7 @@ const upload = multer({
 // Redundant initDb block removed
 
 // --- Helpers ---
-function createToken(user) {
+function createToken(user, browser_id) {
   const role = String(user.role || '').toLowerCase();
   const username = String(user.username || '').toLowerCase();
   // robust admin detection for token duration
@@ -222,7 +224,13 @@ function createToken(user) {
 
   const expiresIn = isAdmin ? '30d' : '5m';
   return jwt.sign(
-    { id: user.id, email: user.email, username: user.username, role: isAdmin ? 'admin' : user.role },
+    {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      role: isAdmin ? 'admin' : user.role,
+      browser_id: browser_id || user.browser_id || null
+    },
     JWT_SECRET,
     { expiresIn }
   );
@@ -241,7 +249,7 @@ function authMiddleware(req, res, next) {
     if (role === 'user') {
       try {
         const result = await db.execute({
-          sql: 'SELECT access_expires_at, last_active_at FROM users WHERE id = ?',
+          sql: 'SELECT access_expires_at, last_active_at, browser_id FROM users WHERE id = ?',
           args: [decoded.id]
         });
         const user = result.rows[0];
@@ -251,6 +259,13 @@ function authMiddleware(req, res, next) {
         const expires = new Date(user.access_expires_at);
         if (Number.isNaN(expires.getTime()) || new Date() > expires) {
           return res.status(403).json({ message: 'Access expired' });
+        }
+
+        // Session Takeover Check: If token's browser_id doesn't match DB's browser_id, 
+        // it means another login has happened elsewhere.
+        if (decoded.browser_id && user.browser_id && decoded.browser_id !== user.browser_id) {
+          console.log(`[Auth] Session displaced for user ${decoded.username}. TokenBID: ${decoded.browser_id} vs DB_BID: ${user.browser_id}`);
+          return res.status(401).json({ message: 'Session active on another device' });
         }
 
         // Refresh last_active_at in background if more than 2 minutes passed
@@ -309,8 +324,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check if already logged in (Single Session Enforcement)
-    // Robust exemption: Check input credentials, role AND username
+    // Single Session Enforcement Logic
     const inputId = String(emailOrUsername || '').toLowerCase().trim();
     const dbUsername = String(user.username || '').toLowerCase().trim();
     const dbRole = String(user.role || '').toLowerCase().trim();
@@ -318,8 +332,11 @@ app.post('/api/auth/login', async (req, res) => {
     // Admin if input is 'admin' OR if database says role/username is 'admin'
     const isAdmin = inputId === 'admin' || inputId === 'admin@example.com' || dbUsername === 'admin' || dbRole === 'admin';
 
-    // Extract IP Address
-    let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // Extract browserId from request
+    const { browserId } = req.body;
+
+    // Extract IP Address using req.ip (more reliable with trust proxy)
+    let clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     if (clientIp && typeof clientIp === 'string') {
       // Handle comma-separated list from proxies (take first IP)
       if (clientIp.includes(',')) {
@@ -331,21 +348,21 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] LastIP[${user.last_ip}]`);
+    console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] (StoredIP: ${user.last_ip}) BrowserID[${browserId}] (StoredBID: ${user.browser_id})`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
       const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
       const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
 
-      // Allow if same IP OR if the session is stale (> 5 mins)
-      // This follows the requirement: allow multiple logins on same device (IP), 
-      // but block and say "Authentication error." if on a different IP.
-      if (!user.last_ip || user.last_ip === clientIp || minutesSinceActive > 5) {
-        console.log(`Allowing session for ${user.username} (IP: ${clientIp}, Stale: ${minutesSinceActive > 5})`);
-      } else {
-        console.log(`Blocking login for ${user.username} - IP mismatch: ${user.last_ip} vs ${clientIp}`);
-        return res.status(403).json({ message: 'Authentication error.' });
+      const isSameIp = user.last_ip && user.last_ip === clientIp;
+      const isSameBrowser = browserId && user.browser_id && user.browser_id === browserId;
+      const isStale = minutesSinceActive > 5;
+
+      if (!isSameIp && !isSameBrowser && !isStale) {
+        console.log(`[Takeover] User ${user.username} logging in from new location. Previous session will be invalidated.`);
+        // We allow the login (Takeover), and the authMiddleware will handle logging out the old session 
+        // once it detects the browser_id mismatch in the JWT vs DB.
       }
     }
 
@@ -371,16 +388,16 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Update: We will update is_logged_in for everyone so they show as active, 
     // but the blocking logic above STRICTLY bypasses admins.
-    // Set is_logged_in = 1 and update last_ip and last_active_at
+    // Set is_logged_in = 1 and update last_ip, browser_id and last_active_at
     await db.execute({
-      sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, last_active_at = ? WHERE id = ?`,
-      args: [clientIp, new Date().toISOString(), user.id]
+      sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, browser_id = ?, last_active_at = ? WHERE id = ?`,
+      args: [clientIp, browserId || (user.browser_id || null), new Date().toISOString(), user.id]
     });
 
     // Final check for user object before token creation to ensure role is passed correctly for admin
     if (isAdmin) user.role = 'admin';
 
-    const token = createToken(user);
+    const token = createToken(user, browserId);
     console.log('Login successful for user:', user.username, 'Role:', user.role);
     res.json({
       token,
