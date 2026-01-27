@@ -145,8 +145,8 @@ export default function LoginPage() {
         </div>
       </div>
       <div style={{ position: 'fixed', bottom: 10, right: 10, fontSize: '10px', color: '#666', opacity: 0.5, textAlign: 'right' }}>
-        Server: {backendStatus}<br />
-        v1.2.3-final-admin-fix
+        {backendStatus}<br />
+        Client: v1.1.0
       </div>
     </div>
   );
