@@ -339,20 +339,22 @@ app.post('/api/auth/login', async (req, res) => {
     // Extract browserId from request
     const { browserId } = req.body;
 
-    // Extract IP Address using req.ip (more reliable with trust proxy)
-    let clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // Extract IP Address with robust multi-header support
+    let clientIp = req.headers['cf-connecting-ip'] ||
+      req.headers['x-real-ip'] ||
+      (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
+      req.ip ||
+      req.socket.remoteAddress;
+
     if (clientIp && typeof clientIp === 'string') {
-      // Handle comma-separated list from proxies (take first IP)
-      if (clientIp.includes(',')) {
-        clientIp = clientIp.split(',')[0].trim();
-      }
       // Normalize IPv6 mapped IPv4
       if (clientIp.startsWith('::ffff:')) {
         clientIp = clientIp.replace('::ffff:', '');
       }
+      clientIp = clientIp.trim();
     }
 
-    console.log(`Login debug: Input[${inputId}] DB[${dbUsername}] Role[${dbRole}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] (StoredIP: ${user.last_ip}) BrowserID[${browserId}] (StoredBID: ${user.browser_id})`);
+    console.log(`Login debug: User[${user.username}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] StoredIP[${user.last_ip}] BrowserID[${browserId}] StoredBID[${user.browser_id}]`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
@@ -363,16 +365,14 @@ app.post('/api/auth/login', async (req, res) => {
       const isSameBrowser = browserId && user.browser_id && user.browser_id === browserId;
       const isStale = minutesSinceActive > 5;
 
-      // REQUIREMENT:
-      // 1. Same browser login: ALLOW re-login, should kick out old session (takeover).
-      // 2. Same IP login: ALLOW takeover.
-      // 3. Different IP + Different Browser: BLOCK with 403 error.
-      // 4. Stale session: ALLOW anywhere.
-
+      // SUCCESS CONDITIONS:
+      // 1. Same Browser (Regardless of IP)
+      // 2. Same IP (Regardless of Browser)
+      // 3. Previous session is stale (>5 mins)
       if (isSameBrowser || isSameIp || isStale) {
-        console.log(`Allowing takeover login for ${user.username}: SameBrowser[${isSameBrowser}] SameIP[${isSameIp}] Stale[${isStale}]`);
+        console.log(`Allowing session takeover for ${user.username}: SameBrowser[${isSameBrowser}] SameIP[${isSameIp}] Stale[${isStale}]`);
       } else {
-        console.log(`Blocking login for ${user.username} - Different IP and Browser. CurrentIP[${user.last_ip}] vs New[${clientIp}]`);
+        console.log(`Blocking login for ${user.username} - IP Mismatch and different browser. StoredIP[${user.last_ip}] vs NewIP[${clientIp}]`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
