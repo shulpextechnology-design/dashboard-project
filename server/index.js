@@ -586,7 +586,7 @@ app.post('/api/admin/users/:id/reset-session', authMiddleware, adminOnly, async 
 
 // --- Admin: manage Helium 10 session/cookies ---
 app.get(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], authMiddleware, adminOnly, async (req, res) => {
-  const id = req.params.id || 1;
+  const id = Number(req.params.id || 1);
   try {
     const result = await db.execute({
       sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
@@ -608,7 +608,7 @@ app.get(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], auth
 
 app.put(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], authMiddleware, adminOnly, async (req, res) => {
   const { sessionData } = req.body;
-  const id = req.params.id || 1;
+  const id = Number(req.params.id || 1);
 
   if (!sessionData || typeof sessionData !== 'string') {
     return res.status(400).json({ message: 'sessionData (string) is required' });
@@ -682,7 +682,7 @@ app.get(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware
 
 app.put(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware, adminOnly, async (req, res) => {
   const { source_url, login_url, amember_login, amember_pass } = req.body;
-  const id = req.params.id || 1;
+  const id = Number(req.params.id || 1);
   const now = new Date().toISOString();
 
   try {
@@ -706,7 +706,7 @@ app.put(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware
 // --- Public: Automated token sync ---
 app.post(['/api/helium10-sync', '/api/helium10-sync/:id'], async (req, res) => {
   const { sessionData, secret } = req.body;
-  const id = req.params.id || 1;
+  const id = Number(req.params.id || 1);
 
   if (secret !== SYNC_SECRET) {
     return res.status(401).json({ message: 'Invalid sync secret' });
@@ -765,7 +765,7 @@ app.get('/api/admin/extension-meta', authMiddleware, adminOnly, async (req, res)
 
 // --- User: fetch Helium 10 session for extension ---
 app.get(['/api/helium10-session', '/api/helium10-session/:id'], authMiddleware, async (req, res) => {
-  const id = req.params.id || 1;
+  const id = Number(req.params.id || 1);
   try {
     const result = await db.execute({
       sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
@@ -1056,14 +1056,19 @@ async function startBackgroundSync() {
 
 // --- Keep-Alive Pinger ---
 function startPinger() {
-  const RENDER_URL = 'https://dashboard-project-uzmg.onrender.com/api/health';
-  console.log('[Pinger] Starting self-pinger to:', RENDER_URL);
+  const URLS = [
+    'https://dashboard-project-uzmg.onrender.com/api/health',
+    'https://shulpextechnology-dashboard-server.hf.space/api/health'
+  ];
+  console.log('[Pinger] Starting self-pinger to:', URLS);
   setInterval(async () => {
-    try {
-      await axios.get(RENDER_URL);
-      console.log('[Pinger] ✅ Self-ping successful');
-    } catch (err) {
-      console.error('[Pinger] ❌ Self-ping failed:', err.message);
+    for (const url of URLS) {
+      try {
+        await axios.get(url, { timeout: 10000 });
+        console.log(`[Pinger] ✅ Self-ping successful: ${url}`);
+      } catch (err) {
+        console.error(`[Pinger] ❌ Self-ping failed for ${url}:`, err.message);
+      }
     }
   }, 1 * 60 * 1000); // Reduce to 1 minute for maximum wakefulness
 }
