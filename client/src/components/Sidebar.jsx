@@ -13,7 +13,7 @@ import {
     Activity
 } from 'lucide-react';
 
-const Sidebar = ({ logout, user }) => {
+const Sidebar = ({ logout, user, mobileOpen, setMobileOpen }) => {
     const location = useLocation();
 
     const navItems = [
@@ -32,67 +32,77 @@ const Sidebar = ({ logout, user }) => {
     }
 
     return (
-        <div className="sidebar">
-            <div className="sidebar-logo">
-                <div className="logo-icon" style={{ background: '#0b9d86', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                    T
+        <>
+            {/* Mobile Overlay */}
+            {mobileOpen && (
+                <div
+                    className="mobile-overlay"
+                    onClick={() => setMobileOpen(false)}
+                />
+            )}
+            <div className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+                <div className="sidebar-logo">
+                    <div className="logo-icon" style={{ background: '#0b9d86', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                        T
+                    </div>
+                    Bharat Tools Hub
                 </div>
-                Bharat Tools Hub
-            </div>
 
-            <nav className="sidebar-nav">
-                {navItems.map((item) => {
-                    // Special handling for Account Settings to be active on both /settings and /account-settings
-                    const isActive = item.name === 'Account Settings'
-                        ? (location.pathname === '/settings' || location.pathname === '/account-settings')
-                        : location.pathname === item.path;
+                <nav className="sidebar-nav">
+                    {navItems.map((item) => {
+                        // Special handling for Account Settings to be active on both /settings and /account-settings
+                        const isActive = item.name === 'Account Settings'
+                            ? (location.pathname === '/settings' || location.pathname === '/account-settings')
+                            : location.pathname === item.path;
 
-                    return (
-                        <Link
-                            key={item.name}
-                            to={item.path}
-                            className={`sidebar-link ${isActive ? 'active' : ''}`}
-                        >
-                            {item.icon}
-                            {item.name}
-                        </Link>
-                    );
-                })}
+                        return (
+                            <Link
+                                key={item.name}
+                                to={item.path}
+                                className={`sidebar-link ${isActive ? 'active' : ''}`}
+                                onClick={() => setMobileOpen(false)}
+                            >
+                                {item.icon}
+                                {item.name}
+                            </Link>
+                        );
+                    })}
 
-                <Link to="/extension" className={`sidebar-link download-btn ${location.pathname === '/extension' ? 'active' : ''}`}>
-                    <Download size={20} />
-                    Download Extension
-                    <ChevronRight size={16} style={{ marginLeft: 'auto' }} />
-                </Link>
-            </nav>
+                    <Link to="/extension" className={`sidebar-link download-btn ${location.pathname === '/extension' ? 'active' : ''}`}>
+                        <Download size={20} />
+                        Download Extension
+                        <ChevronRight size={16} style={{ marginLeft: 'auto' }} />
+                    </Link>
+                </nav>
 
-            <div className="sidebar-footer">
-                <button
-                    onClick={async () => {
-                        try {
-                            const auth = JSON.parse(localStorage.getItem('auth') || '{}');
-                            const token = auth.token;
-                            if (token) {
-                                await fetch('/api/auth/logout', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Authorization': `Bearer ${token}`
-                                    }
-                                });
+                <div className="sidebar-footer">
+                    <button
+                        onClick={async () => {
+                            try {
+                                const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+                                const token = auth.token;
+                                if (token) {
+                                    await fetch('/api/auth/logout', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Authorization': `Bearer ${token}`
+                                        }
+                                    });
+                                }
+                            } catch (e) {
+                                console.error("Logout API failed", e);
                             }
-                        } catch (e) {
-                            console.error("Logout API failed", e);
-                        }
-                        logout();
-                    }}
-                    className="sidebar-link"
-                    style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
-                >
-                    <LogOut size={20} />
-                    Logout
-                </button>
+                            logout();
+                        }}
+                        className="sidebar-link"
+                        style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
+                    >
+                        <LogOut size={20} />
+                        Logout
+                    </button>
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 

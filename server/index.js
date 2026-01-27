@@ -366,7 +366,11 @@ app.post('/api/auth/login', async (req, res) => {
     const clientIp = normalizeIp(clientIpRaw);
     const storedIp = normalizeIp(user.last_ip);
 
-    console.log(`[Login Auth Check] User: ${user.username} | RequestIP: ${clientIp} | StoredIP: ${storedIp} | BrowserID: ${browserId} | StoredBID: ${user.browser_id}`);
+    // CRITICAL: We also trim and normalize browserId to be safe
+    const normalizedBrowserId = String(browserId || '').trim();
+    const storedBrowserId = String(user.browser_id || '').trim();
+
+    console.log(`[Login Auth Check] User: ${user.username} | RequestIP: ${clientIp} | StoredIP: ${storedIp} | RequestBID: ${normalizedBrowserId} | StoredBID: ${storedBrowserId} | IsLoggedIn: ${user.is_logged_in}`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
@@ -374,19 +378,24 @@ app.post('/api/auth/login', async (req, res) => {
       const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
 
       const isSameIp = (clientIp === storedIp);
-      const isSameBrowser = (browserId && user.browser_id && user.browser_id === browserId);
-      const isStale = (minutesSinceActive > 5);
+      const isSameBrowser = (normalizedBrowserId && storedBrowserId && storedBrowserId === normalizedBrowserId);
+      const isStale = (minutesSinceActive > 2); // Reduced from 5m to 2m for better re-login UX
+
+      // If we don't even have a stored browser ID yet, we should allow the login 
+      // instead of blocking, to allow users to "re-identity" themselves.
+      const noStoredIdentity = !storedBrowserId;
 
       // CRITICAL POLICY:
-      // 1. Same Browser -> ALLOW & REFRESH
-      // 2. SAME IP (Different Browser) -> ALLOW & TERMINATE OLD (This is the "Takeover")
-      // 3. Stale Session -> ALLOW & REFRESH
-      // 4. DIFFERENT IP AND DIFFERENT BROWSER -> BLOCK (403)
+      // 1. Same Browser -> ALLOW & REFRESH (Takeover)
+      // 2. SAME IP (Different Browser) -> ALLOW & TERMINATE OLD (Takeover)
+      // 3. Stale Session -> ALLOW & REFRESH (Takeover)
+      // 4. No stored identity -> ALLOW (First time login / Upgrade transition)
+      // 5. DIFFERENT IP AND DIFFERENT BROWSER AND NOT STALE -> BLOCK (403)
 
-      if (isSameIp || isSameBrowser || isStale) {
-        console.log(`[Takeover Success] Logged in for ${user.username}. (SameIP: ${isSameIp}, SameBID: ${isSameBrowser}, Stale: ${isStale})`);
+      if (isSameIp || isSameBrowser || isStale || noStoredIdentity) {
+        console.log(`[Takeover Success] Logged in for ${user.username}. (SameIP: ${isSameIp}, SameBID: ${isSameBrowser}, Stale: ${isStale}, NoIdentity: ${noStoredIdentity})`);
       } else {
-        console.log(`[Takeover Blocked] Concurrent session on different IP for ${user.username}. Expected: ${storedIp}, Received: ${clientIp}`);
+        console.log(`[Takeover Blocked] User: ${user.username} | Diff IP: ${storedIp}->${clientIp} | Diff BID: ${storedBrowserId}->${normalizedBrowserId} | Active: ${minutesSinceActive.toFixed(1)}m ago`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
