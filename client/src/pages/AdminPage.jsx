@@ -221,7 +221,7 @@ export default function AdminPage() {
       alert(`Helium 10 (Instance ${selectedInstance}) session updated!`);
       loadHeliumSession(selectedInstance);
     } catch (e) {
-      alert('Failed to update session');
+      alert('Failed to update session: ' + (e.response?.data?.message || e.message));
     } finally {
       setHeliumSaving(false);
     }
@@ -255,7 +255,7 @@ export default function AdminPage() {
       await axios.put(`/api/admin/sync-config/${selectedInstance}`, syncConfig);
       alert(`Config for Instance ${selectedInstance} updated!`);
     } catch (e) {
-      alert('Failed to update config');
+      alert('Failed to update config: ' + (e.response?.data?.message || e.message));
     } finally {
       setSyncConfigLoading(false);
     }
