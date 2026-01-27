@@ -373,31 +373,21 @@ app.post('/api/auth/login', async (req, res) => {
     const normalizedRequestBID = normalizeBID(browserId);
     const normalizedStoredBID = normalizeBID(user.browser_id);
 
-    console.log(`[Login Auth Check] User: ${user.username} | RequestIP: ${clientIp} | StoredIP: ${storedIp} | RequestBID: ${normalizedRequestBID} | StoredBID: ${normalizedStoredBID} | IsLoggedIn: ${user.is_logged_in}`);
+    console.log(`[Login Auth Check] User: ${user.username} | IP: ${clientIp} | BID: ${normalizedRequestBID}`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
       const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
-      const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
+      const msSinceActive = lastActive ? (now - lastActive) : Infinity;
 
-      const isSameIp = (clientIp === storedIp);
-      const isSameBrowser = (normalizedRequestBID && normalizedStoredBID && normalizedRequestBID === normalizedStoredBID);
-      const isStale = (minutesSinceActive > 2);
-
-      const noStoredIdentity = !normalizedStoredBID;
-
-      // ULTIMATE TAKEOVER POLICY (Strict but Smart):
-      // 1. Same Browser ID -> ALWAYS ALLOW (Highest trust)
-      // 2. Different Browser ID but Same IP -> ALLOW
-      // 3. Stale (Inactive > 2 mins) -> ALLOW
-      // 4. No identity stored yet -> ALLOW
-
-      if (isSameBrowser || isSameIp || isStale || noStoredIdentity) {
-        console.log(`[Takeover Success] User: ${user.username}. Reason: ${isSameBrowser ? 'SameBrowser' : isSameIp ? 'SameIP' : isStale ? 'Stale' : 'FirstIdentity'}`);
-      } else {
-        console.log(`[Takeover Blocked] User: ${user.username} | IP: ${storedIp}->${clientIp} | BID: ${normalizedStoredBID}->${normalizedRequestBID} | Active: ${minutesSinceActive.toFixed(1)}m ago`);
-        return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
+      // SECURITY COOLDOWN: Prevent rapid-fire oscillation (must wait 5 seconds between logins)
+      // This stops automated script fighting but allows normal human switching.
+      if (msSinceActive < 5000) {
+        console.log(`[Takeover Cooling] User: ${user.username} | Last active ${msSinceActive}ms ago. Blocking for cooldown.`);
+        return res.status(429).json({ message: 'Please wait a few seconds before logging in again.' });
       }
+
+      console.log(`[Takeover displacing] User: ${user.username} (Latest Login Wins)`);
     }
 
     // If normal user, require active access and check expiry

@@ -55,8 +55,8 @@ export default function LoginPage() {
         setError('Server timeout. Please try again later.');
       } else {
         const msg = err.response?.data?.message || err.message || 'Login failed.';
-        if (err.response?.status === 403 && msg.includes('another device')) {
-          setError('Account already in use on another device. Please wait 2 minutes or close the other window.');
+        if (err.response?.status === 429) {
+          setError('Please wait a few seconds before logging in again.');
         } else {
           setError(msg);
         }
