@@ -17,7 +17,7 @@ app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate c
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.2.9-latest-wins';
+const BACKEND_VERSION = 'v1.3.0-multi-instance';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -585,8 +585,23 @@ app.post('/api/admin/users/:id/reset-session', authMiddleware, adminOnly, async 
 });
 
 // --- Admin: manage Helium 10 session/cookies ---
-app.get(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], authMiddleware, adminOnly, async (req, res) => {
-  const id = Number(req.params.id || 1);
+app.get('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, res) => {
+  const id = 1;
+  try {
+    const result = await db.execute({
+      sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
+      args: [id]
+    });
+    const row = result.rows[0];
+    if (!row) return res.json({ sessionJson: '', updatedAt: null });
+    res.json({ sessionJson: row.session_json, updatedAt: row.updated_at });
+  } catch (err) {
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
+app.get('/api/admin/helium10-session/:id', authMiddleware, adminOnly, async (req, res) => {
+  const id = Number(req.params.id);
   try {
     const result = await db.execute({
       sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
@@ -606,9 +621,23 @@ app.get(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], auth
   }
 });
 
-app.put(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], authMiddleware, adminOnly, async (req, res) => {
+app.put('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, res) => {
   const { sessionData } = req.body;
-  const id = Number(req.params.id || 1);
+  const id = 1;
+  if (!sessionData || typeof sessionData !== 'string') return res.status(400).json({ message: 'sessionData (string) is required' });
+  const now = new Date().toISOString();
+  try {
+    await db.execute({
+      sql: `INSERT INTO helium10_session (id, session_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
+      args: [id, sessionData, now]
+    });
+    res.json({ saved: true, updatedAt: now });
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
+});
+
+app.put('/api/admin/helium10-session/:id', authMiddleware, adminOnly, async (req, res) => {
+  const { sessionData } = req.body;
+  const id = Number(req.params.id);
 
   if (!sessionData || typeof sessionData !== 'string') {
     return res.status(400).json({ message: 'sessionData (string) is required' });
@@ -631,8 +660,18 @@ app.put(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], auth
 });
 
 // Sync Debug & Trigger
-app.get(['/api/admin/sync-debug', '/api/admin/sync-debug/:id'], authMiddleware, adminOnly, async (req, res) => {
-  const id = req.params.id || 1;
+app.get('/api/admin/sync-debug', authMiddleware, adminOnly, async (req, res) => {
+  const id = 1;
+  try {
+    const result = await db.execute({ sql: 'SELECT * FROM sync_status WHERE id = ?', args: [id] });
+    const row = result.rows[0];
+    if (row) res.json({ lastSuccess: row.last_success, lastError: row.last_error, message: row.message, isSyncing: row.is_syncing === 1 });
+    else res.json({ message: 'No status found' });
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
+});
+
+app.get('/api/admin/sync-debug/:id', authMiddleware, adminOnly, async (req, res) => {
+  const id = Number(req.params.id);
   try {
     const result = await db.execute({
       sql: 'SELECT * FROM sync_status WHERE id = ?',
@@ -655,8 +694,14 @@ app.get(['/api/admin/sync-debug', '/api/admin/sync-debug/:id'], authMiddleware, 
 });
 
 
-app.post(['/api/admin/sync-trigger', '/api/admin/sync-trigger/:id'], authMiddleware, adminOnly, async (req, res) => {
-  const id = Number(req.params.id || 1);
+app.post('/api/admin/sync-trigger', authMiddleware, adminOnly, async (req, res) => {
+  const id = 1;
+  if (global.triggerBackgroundSync) { global.triggerBackgroundSync(id); res.json({ message: `Sync triggered for instance ${id}` }); }
+  else res.status(500).json({ message: 'Background worker not initialized' });
+});
+
+app.post('/api/admin/sync-trigger/:id', authMiddleware, adminOnly, async (req, res) => {
+  const id = Number(req.params.id);
   console.log(`[API] Manual sync triggered by admin for ID: ${id}`);
   if (global.triggerBackgroundSync) {
     global.triggerBackgroundSync(id);
@@ -667,22 +712,38 @@ app.post(['/api/admin/sync-trigger', '/api/admin/sync-trigger/:id'], authMiddlew
   }
 });
 
-app.get(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware, adminOnly, async (req, res) => {
-  const id = req.params.id || 1;
+app.get('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
+  const id = 1;
   try {
-    const result = await db.execute({
-      sql: 'SELECT * FROM sync_config WHERE id = ?',
-      args: [id]
-    });
+    const result = await db.execute({ sql: 'SELECT * FROM sync_config WHERE id = ?', args: [id] });
     res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ message: 'DB error' });
-  }
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
 });
 
-app.put(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware, adminOnly, async (req, res) => {
+app.get('/api/admin/sync-config/:id', authMiddleware, adminOnly, async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const result = await db.execute({ sql: 'SELECT * FROM sync_config WHERE id = ?', args: [id] });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
+});
+
+app.put('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
   const { source_url, login_url, amember_login, amember_pass } = req.body;
-  const id = Number(req.params.id || 1);
+  const id = 1;
+  const now = new Date().toISOString();
+  try {
+    await db.execute({
+      sql: `UPDATE sync_config SET source_url = ?, login_url = ?, amember_login = ?, amember_pass = ?, updated_at = ? WHERE id = ?`,
+      args: [source_url, login_url, amember_login, amember_pass, now, id]
+    });
+    res.json({ success: true, updatedAt: now });
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
+});
+
+app.put('/api/admin/sync-config/:id', authMiddleware, adminOnly, async (req, res) => {
+  const { source_url, login_url, amember_login, amember_pass } = req.body;
+  const id = Number(req.params.id);
   const now = new Date().toISOString();
 
   try {
@@ -703,10 +764,24 @@ app.put(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware
   }
 });
 
-// --- Public: Automated token sync ---
-app.post(['/api/helium10-sync', '/api/helium10-sync/:id'], async (req, res) => {
+app.post('/api/helium10-sync', async (req, res) => {
   const { sessionData, secret } = req.body;
-  const id = Number(req.params.id || 1);
+  const id = 1;
+  if (secret !== SYNC_SECRET) return res.status(401).json({ message: 'Invalid sync secret' });
+  if (!sessionData || typeof sessionData !== 'string') return res.status(400).json({ message: 'sessionData (string) is required' });
+  const now = new Date().toISOString();
+  try {
+    await db.execute({
+      sql: `INSERT INTO helium10_session (id, session_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
+      args: [id, sessionData, now]
+    });
+    res.json({ saved: true, updatedAt: now, id });
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
+});
+
+app.post('/api/helium10-sync/:id', async (req, res) => {
+  const { sessionData, secret } = req.body;
+  const id = Number(req.params.id);
 
   if (secret !== SYNC_SECRET) {
     return res.status(401).json({ message: 'Invalid sync secret' });
@@ -764,8 +839,18 @@ app.get('/api/admin/extension-meta', authMiddleware, adminOnly, async (req, res)
 });
 
 // --- User: fetch Helium 10 session for extension ---
-app.get(['/api/helium10-session', '/api/helium10-session/:id'], authMiddleware, async (req, res) => {
-  const id = Number(req.params.id || 1);
+app.get('/api/helium10-session', authMiddleware, async (req, res) => {
+  const id = 1;
+  try {
+    const result = await db.execute({ sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`, args: [id] });
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ message: `Helium 10 session not configured` });
+    res.json({ sessionData: row.session_json, updatedAt: row.updated_at, id });
+  } catch (err) { res.status(500).json({ message: 'DB error' }); }
+});
+
+app.get('/api/helium10-session/:id', authMiddleware, async (req, res) => {
+  const id = Number(req.params.id);
   try {
     const result = await db.execute({
       sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
