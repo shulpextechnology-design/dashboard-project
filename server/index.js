@@ -339,47 +339,59 @@ app.post('/api/auth/login', async (req, res) => {
     // Extract browserId from request
     const { browserId } = req.body;
 
-    // Extract IP Address with robust multi-header support
+    // --- HARDENED IP DETECTION ---
     function getCleanIp(req) {
-      let ip = req.headers['cf-connecting-ip'] ||
-        req.headers['x-real-ip'] ||
-        (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
-        req.ip ||
-        req.socket.remoteAddress ||
-        '0.0.0.0';
+      let ip = 'unknown';
+      try {
+        ip = req.headers['cf-connecting-ip'] ||
+          req.headers['x-real-ip'] ||
+          (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
+          req.ip ||
+          req.socket.remoteAddress ||
+          '0.0.0.0';
 
-      if (typeof ip === 'string') {
-        if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
-        if (ip === '::1') ip = '127.0.0.1';
-        return ip.trim();
-      }
-      return ip;
+        if (typeof ip === 'string') {
+          // Normalize IPv6-mapped IPv4
+          if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
+          // Normalize localhost
+          if (ip === '::1') ip = '127.0.0.1';
+          // Remove port if present
+          if (ip.includes(':') && !ip.includes('.')) {
+            // Likely raw IPv6, leave as is but trim
+          } else if (ip.includes(':')) {
+            ip = ip.split(':')[0];
+          }
+          return ip.trim();
+        }
+      } catch (e) { console.error('[IP] Parse error:', e); }
+      return String(ip).trim();
     }
 
     const clientIp = getCleanIp(req);
+    // When reading from DB, also normalize it to be 100% sure
     const storedIp = user.last_ip ? getCleanIp({ headers: { 'x-real-ip': user.last_ip } }) : null;
 
-    console.log(`Login debug: User[${user.username}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] StoredIP[${storedIp}] BrowserID[${browserId}] StoredBID[${user.browser_id}]`);
+    console.log(`[Login] ${user.username} | IP: ${clientIp} | Stored: ${storedIp} | BID: ${browserId} | StoredBID: ${user.browser_id}`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
       const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
       const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
 
-      const isSameIp = storedIp && storedIp === clientIp;
-      const isSameBrowser = browserId && user.browser_id && user.browser_id === browserId;
+      const isSameIp = (storedIp && clientIp && storedIp === clientIp);
+      const isSameBrowser = (browserId && user.browser_id && user.browser_id === browserId);
       const isStale = minutesSinceActive > 5;
 
       // REQUIREMENT:
-      // 1. Same Browser (Regardless of IP) -> ALLOW (Kick old)
-      // 2. SAME IP (Regardless of Browser) -> ALLOW (Kick old)
-      // 3. Different IP + Different Browser -> BLOCK (403)
-      // 4. Stale session (>5 mins) -> ALLOW (Anywhere)
+      // 1. Same IP (regardless of browser) -> ALLOW (Kick old)
+      // 2. Same Browser (regardless of IP) -> ALLOW (Kick old)
+      // 3. Stale session -> ALLOW (Kick old)
+      // 4. Different IP AND Different Browser -> BLOCK (403)
 
-      if (isSameBrowser || isSameIp || isStale) {
-        console.log(`Allowing takeover for ${user.username}: SameBrowser[${isSameBrowser}] SameIP[${isSameIp}] Stale[${isStale}]`);
+      if (isSameIp || isSameBrowser || isStale) {
+        console.log(`[Takeover] Allowing for ${user.username} (SameIP:${isSameIp}, SameBID:${isSameBrowser}, Stale:${isStale})`);
       } else {
-        console.log(`Blocking login for ${user.username} - IP Mismatch and different browser. StoredIP[${storedIp}] vs NewIP[${clientIp}]`);
+        console.log(`[Blocked] Concurrent session on different IP/Device for ${user.username}`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
