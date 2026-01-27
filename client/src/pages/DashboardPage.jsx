@@ -50,7 +50,7 @@ export default function DashboardPage() {
             <section className="welcome-banner-v2">
                 <div className="welcome-text">
                     <h1>Dashboard</h1>
-                    <p>Welcome back, <strong>{me?.username || me?.name}</strong>!</p>
+                    <p>Welcome back, <strong>{me?.username || me?.name}</strong>! <span style={{ fontSize: '10px', opacity: 0.5 }}>v1.3.2-auto</span></p>
                 </div>
                 {accessLabel && (
                     <div className="status-badge">
