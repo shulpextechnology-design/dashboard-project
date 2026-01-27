@@ -22,6 +22,13 @@ export default function LoginPage() {
   const { login } = useAuth();
 
   React.useEffect(() => {
+    // Generate or retrieve a persistent browser ID early
+    let browserId = localStorage.getItem('browserId');
+    if (!browserId) {
+      browserId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('browserId', browserId);
+    }
+
     axios.get('/api/health')
       .then((res) => setBackendStatus(`Connected (${res.data.version || 'v1.0.6'})`))
       .catch((err) => setBackendStatus(`Offline (${err.message})`));
@@ -32,12 +39,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    // Generate or retrieve a persistent browser ID to allow same-browser re-logins
-    let browserId = localStorage.getItem('browserId');
-    if (!browserId) {
-      browserId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('browserId', browserId);
-    }
+    const browserId = localStorage.getItem('browserId');
 
     try {
       const res = await axios.post('/api/auth/login', {
@@ -52,8 +54,12 @@ export default function LoginPage() {
       if (err.code === 'ECONNABORTED') {
         setError('Server timeout. Please try again later.');
       } else {
-        const msg = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
-        setError(msg);
+        const msg = err.response?.data?.message || err.message || 'Login failed.';
+        if (err.response?.status === 403 && msg.includes('another device')) {
+          setError('Account already in use on another device. Please wait 2 minutes or close the other window.');
+        } else {
+          setError(msg);
+        }
       }
     } finally {
       setLoading(false);

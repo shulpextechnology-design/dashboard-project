@@ -343,15 +343,20 @@ app.post('/api/auth/login', async (req, res) => {
     function normalizeIp(ip) {
       if (!ip || typeof ip !== 'string') return '0.0.0.0';
       let clean = ip.trim();
-      // Remove IPv6 transition prefix
       if (clean.startsWith('::ffff:')) clean = clean.replace('::ffff:', '');
-      // Standardize localhost
       if (clean === '::1') return '127.0.0.1';
-      // If it's an IPv4 address with a port (e.g. 1.2.3.4:5678), remove the port
       if (clean.includes('.') && clean.includes(':')) {
         clean = clean.split(':')[0];
       }
       return clean;
+    }
+
+    // --- BROWSER ID NORMALIZATION ---
+    function normalizeBID(bid) {
+      if (!bid) return null;
+      const s = String(bid).trim().toLowerCase();
+      if (s === 'null' || s === 'undefined' || s === '') return null;
+      return s;
     }
 
     function getRawIp(req) {
@@ -362,15 +367,13 @@ app.post('/api/auth/login', async (req, res) => {
         req.socket.remoteAddress;
     }
 
-    const clientIpRaw = getRawIp(req);
-    const clientIp = normalizeIp(clientIpRaw);
+    const clientIp = normalizeIp(getRawIp(req));
     const storedIp = normalizeIp(user.last_ip);
 
-    // CRITICAL: We also trim and normalize browserId to be safe
-    const normalizedBrowserId = String(browserId || '').trim();
-    const storedBrowserId = String(user.browser_id || '').trim();
+    const normalizedRequestBID = normalizeBID(browserId);
+    const normalizedStoredBID = normalizeBID(user.browser_id);
 
-    console.log(`[Login Auth Check] User: ${user.username} | RequestIP: ${clientIp} | StoredIP: ${storedIp} | RequestBID: ${normalizedBrowserId} | StoredBID: ${storedBrowserId} | IsLoggedIn: ${user.is_logged_in}`);
+    console.log(`[Login Auth Check] User: ${user.username} | RequestIP: ${clientIp} | StoredIP: ${storedIp} | RequestBID: ${normalizedRequestBID} | StoredBID: ${normalizedStoredBID} | IsLoggedIn: ${user.is_logged_in}`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
@@ -378,24 +381,21 @@ app.post('/api/auth/login', async (req, res) => {
       const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
 
       const isSameIp = (clientIp === storedIp);
-      const isSameBrowser = (normalizedBrowserId && storedBrowserId && storedBrowserId === normalizedBrowserId);
-      const isStale = (minutesSinceActive > 2); // Reduced from 5m to 2m for better re-login UX
+      const isSameBrowser = (normalizedRequestBID && normalizedStoredBID && normalizedRequestBID === normalizedStoredBID);
+      const isStale = (minutesSinceActive > 2);
 
-      // If we don't even have a stored browser ID yet, we should allow the login 
-      // instead of blocking, to allow users to "re-identity" themselves.
-      const noStoredIdentity = !storedBrowserId;
+      const noStoredIdentity = !normalizedStoredBID;
 
-      // CRITICAL POLICY:
-      // 1. Same Browser -> ALLOW & REFRESH (Takeover)
-      // 2. SAME IP (Different Browser) -> ALLOW & TERMINATE OLD (Takeover)
-      // 3. Stale Session -> ALLOW & REFRESH (Takeover)
-      // 4. No stored identity -> ALLOW (First time login / Upgrade transition)
-      // 5. DIFFERENT IP AND DIFFERENT BROWSER AND NOT STALE -> BLOCK (403)
+      // ULTIMATE TAKEOVER POLICY (Strict but Smart):
+      // 1. Same Browser ID -> ALWAYS ALLOW (Highest trust)
+      // 2. Different Browser ID but Same IP -> ALLOW
+      // 3. Stale (Inactive > 2 mins) -> ALLOW
+      // 4. No identity stored yet -> ALLOW
 
-      if (isSameIp || isSameBrowser || isStale || noStoredIdentity) {
-        console.log(`[Takeover Success] Logged in for ${user.username}. (SameIP: ${isSameIp}, SameBID: ${isSameBrowser}, Stale: ${isStale}, NoIdentity: ${noStoredIdentity})`);
+      if (isSameBrowser || isSameIp || isStale || noStoredIdentity) {
+        console.log(`[Takeover Success] User: ${user.username}. Reason: ${isSameBrowser ? 'SameBrowser' : isSameIp ? 'SameIP' : isStale ? 'Stale' : 'FirstIdentity'}`);
       } else {
-        console.log(`[Takeover Blocked] User: ${user.username} | Diff IP: ${storedIp}->${clientIp} | Diff BID: ${storedBrowserId}->${normalizedBrowserId} | Active: ${minutesSinceActive.toFixed(1)}m ago`);
+        console.log(`[Takeover Blocked] User: ${user.username} | IP: ${storedIp}->${clientIp} | BID: ${normalizedStoredBID}->${normalizedRequestBID} | Active: ${minutesSinceActive.toFixed(1)}m ago`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
