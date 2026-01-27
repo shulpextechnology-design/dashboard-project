@@ -154,7 +154,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/helium10"
+        path="/helium10/:id"
         element={
           <PrivateRoute>
             <SidebarLayout>

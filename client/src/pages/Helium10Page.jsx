@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   Zap,
@@ -15,6 +16,7 @@ const AES_KEY = 'brandseotools(created-by-premiumtools.shop)iLFB0yJSdidhLStH6tNc
 const HELIUM10_URL = 'https://members.helium10.com/black-box/niche?accountId=1543300528';
 
 export default function Helium10Page() {
+  const { id } = useParams();
   const [clicked, setClicked] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [sessionData, setSessionData] = useState(null);
@@ -33,17 +35,17 @@ export default function Helium10Page() {
       setLoadingSession(true);
       setSessionError('');
       try {
-        const res = await axios.get('/api/helium10-session');
+        const res = await axios.get(`/api/helium10-session/${id || 1}`);
         setSessionData(res.data);
       } catch (e) {
-        console.error('Failed to load Helium 10 session', e);
-        setSessionError('Helium 10 session is not configured yet. Please contact support.');
+        console.error(`Failed to load Helium 10 session ${id}`, e);
+        setSessionError(`Helium 10 session ${id} is not configured yet. Please contact support.`);
       } finally {
         setLoadingSession(false);
       }
     }
     loadSession();
-  }, []);
+  }, [id]);
 
   const fallbackCopyToClipboard = (text) => {
     const textArea = document.createElement('textarea');

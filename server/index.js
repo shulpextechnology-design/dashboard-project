@@ -41,7 +41,7 @@ async function initDb() {
     // 2. Helium 10 session table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS helium10_session (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        id INTEGER PRIMARY KEY CHECK (id IN (1, 2)),
         session_json TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -50,7 +50,7 @@ async function initDb() {
     // 3. Sync configuration table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS sync_config (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        id INTEGER PRIMARY KEY CHECK (id IN (1, 2)),
         source_url TEXT NOT NULL,
         login_url TEXT NOT NULL,
         amember_login TEXT NOT NULL,
@@ -62,7 +62,7 @@ async function initDb() {
     // 4. Sync status table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS sync_status (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        id INTEGER PRIMARY KEY CHECK (id IN (1, 2)),
         last_success TEXT,
         last_error TEXT,
         message TEXT,
@@ -103,7 +103,7 @@ async function initDb() {
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
     // Reset syncing status
-    await db.execute('UPDATE sync_status SET is_syncing = 0 WHERE id = 1');
+    await db.execute('UPDATE sync_status SET is_syncing = 0');
 
     // Seed default admin
     const adminEmail = 'admin@example.com';
@@ -120,19 +120,21 @@ async function initDb() {
     }
 
     // Seed default sync config
-    const checkSyncConfig = await db.execute('SELECT * FROM sync_config WHERE id = 1');
-    if (checkSyncConfig.rows.length === 0) {
-      await db.execute({
-        sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
-             VALUES (1, ?, ?, ?, ?, ?)`,
-        args: ['https://members.freelancerservice.site/content/p/id/173/', 'https://members.freelancerservice.site/login', 'vigneshsingaravelan@kyda.in', 'vigneshsingaravelan@kyda.in', new Date().toISOString()]
-      });
-    }
+    for (const id of [1, 2]) {
+      const checkSyncConfig = await db.execute({ sql: 'SELECT * FROM sync_config WHERE id = ?', args: [id] });
+      if (checkSyncConfig.rows.length === 0) {
+        await db.execute({
+          sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+          args: [id, 'https://members.freelancerservice.site/content/p/id/173/', 'https://members.freelancerservice.site/login', 'vigneshsingaravelan@kyda.in', 'vigneshsingaravelan@kyda.in', new Date().toISOString()]
+        });
+      }
 
-    // Seed initial sync status
-    const checkStatus = await db.execute('SELECT * FROM sync_status WHERE id = 1');
-    if (checkStatus.rows.length === 0) {
-      await db.execute({ sql: 'INSERT INTO sync_status (id, message) VALUES (1, ?)', args: ['Worker initialized'] });
+      // Seed initial sync status
+      const checkStatus = await db.execute({ sql: 'SELECT * FROM sync_status WHERE id = ?', args: [id] });
+      if (checkStatus.rows.length === 0) {
+        await db.execute({ sql: 'INSERT INTO sync_status (id, message) VALUES (?, ?)', args: [id, `Worker ${id} initialized`] });
+      }
     }
 
     console.log('Database initialization complete');
@@ -583,9 +585,13 @@ app.post('/api/admin/users/:id/reset-session', authMiddleware, adminOnly, async 
 });
 
 // --- Admin: manage Helium 10 session/cookies ---
-app.get('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, res) => {
+app.get(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], authMiddleware, adminOnly, async (req, res) => {
+  const id = req.params.id || 1;
   try {
-    const result = await db.execute(`SELECT session_json, updated_at FROM helium10_session WHERE id = 1`);
+    const result = await db.execute({
+      sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
+      args: [id]
+    });
     const row = result.rows[0];
     if (!row) {
       return res.json({ sessionJson: '', updatedAt: null });
@@ -595,13 +601,14 @@ app.get('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, re
       updatedAt: row.updated_at
     });
   } catch (err) {
-    console.error('DB error fetching helium10 session:', err);
+    console.error(`DB error fetching helium10 session ${id}:`, err);
     res.status(500).json({ message: 'DB error' });
   }
 });
 
-app.put('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, res) => {
+app.put(['/api/admin/helium10-session', '/api/admin/helium10-session/:id'], authMiddleware, adminOnly, async (req, res) => {
   const { sessionData } = req.body;
+  const id = req.params.id || 1;
 
   if (!sessionData || typeof sessionData !== 'string') {
     return res.status(400).json({ message: 'sessionData (string) is required' });
@@ -612,21 +619,25 @@ app.put('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, re
   try {
     await db.execute({
       sql: `INSERT INTO helium10_session (id, session_json, updated_at)
-           VALUES (1, ?, ?)
+           VALUES (?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
-      args: [sessionData, now]
+      args: [id, sessionData, now]
     });
     res.json({ saved: true, updatedAt: now });
   } catch (err) {
-    console.error('DB error saving helium10 session:', err);
+    console.error(`DB error saving helium10 session ${id}:`, err);
     res.status(500).json({ message: 'DB error' });
   }
 });
 
 // Sync Debug & Trigger
-app.get('/api/admin/sync-debug', authMiddleware, adminOnly, async (req, res) => {
+app.get(['/api/admin/sync-debug', '/api/admin/sync-debug/:id'], authMiddleware, adminOnly, async (req, res) => {
+  const id = req.params.id || 1;
   try {
-    const result = await db.execute('SELECT * FROM sync_status WHERE id = 1');
+    const result = await db.execute({
+      sql: 'SELECT * FROM sync_status WHERE id = ?',
+      args: [id]
+    });
     const row = result.rows[0];
     if (row) {
       res.json({
@@ -644,28 +655,34 @@ app.get('/api/admin/sync-debug', authMiddleware, adminOnly, async (req, res) => 
 });
 
 
-app.post('/api/admin/sync-trigger', authMiddleware, adminOnly, async (req, res) => {
-  console.log('[API] Manual sync triggered by admin');
+app.post(['/api/admin/sync-trigger', '/api/admin/sync-trigger/:id'], authMiddleware, adminOnly, async (req, res) => {
+  const id = Number(req.params.id || 1);
+  console.log(`[API] Manual sync triggered by admin for ID: ${id}`);
   if (global.triggerBackgroundSync) {
-    global.triggerBackgroundSync();
-    res.json({ message: 'Sync triggered' });
+    global.triggerBackgroundSync(id);
+    res.json({ message: `Sync triggered for instance ${id}` });
   } else {
     console.warn('[API] Trigger failed: background worker not initialized');
     res.status(500).json({ message: 'Background worker not initialized' });
   }
 });
 
-app.get('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
+app.get(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware, adminOnly, async (req, res) => {
+  const id = req.params.id || 1;
   try {
-    const result = await db.execute('SELECT * FROM sync_config WHERE id = 1');
+    const result = await db.execute({
+      sql: 'SELECT * FROM sync_config WHERE id = ?',
+      args: [id]
+    });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ message: 'DB error' });
   }
 });
 
-app.put('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
+app.put(['/api/admin/sync-config', '/api/admin/sync-config/:id'], authMiddleware, adminOnly, async (req, res) => {
   const { source_url, login_url, amember_login, amember_pass } = req.body;
+  const id = req.params.id || 1;
   const now = new Date().toISOString();
 
   try {
@@ -676,8 +693,8 @@ app.put('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) =>
             amember_login = ?, 
             amember_pass = ?, 
             updated_at = ? 
-            WHERE id = 1`,
-      args: [source_url, login_url, amember_login, amember_pass, now]
+            WHERE id = ?`,
+      args: [source_url, login_url, amember_login, amember_pass, now, id]
     });
     res.json({ success: true, updatedAt: now });
   } catch (err) {
@@ -687,8 +704,9 @@ app.put('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) =>
 });
 
 // --- Public: Automated token sync ---
-app.post('/api/helium10-sync', async (req, res) => {
+app.post(['/api/helium10-sync', '/api/helium10-sync/:id'], async (req, res) => {
   const { sessionData, secret } = req.body;
+  const id = req.params.id || 1;
 
   if (secret !== SYNC_SECRET) {
     return res.status(401).json({ message: 'Invalid sync secret' });
@@ -703,14 +721,14 @@ app.post('/api/helium10-sync', async (req, res) => {
   try {
     await db.execute({
       sql: `INSERT INTO helium10_session (id, session_json, updated_at)
-           VALUES (1, ?, ?)
+           VALUES (?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
-      args: [sessionData, now]
+      args: [id, sessionData, now]
     });
-    console.log('Automated Helium 10 session sync successful');
-    res.json({ saved: true, updatedAt: now });
+    console.log(`Automated Helium 10 session sync successful for ID: ${id}`);
+    res.json({ saved: true, updatedAt: now, id });
   } catch (err) {
-    console.error('DB error syncing helium10 session:', err);
+    console.error(`DB error syncing helium10 session ${id}:`, err);
     res.status(500).json({ message: 'DB error' });
   }
 });
@@ -746,19 +764,24 @@ app.get('/api/admin/extension-meta', authMiddleware, adminOnly, async (req, res)
 });
 
 // --- User: fetch Helium 10 session for extension ---
-app.get('/api/helium10-session', authMiddleware, async (req, res) => {
+app.get(['/api/helium10-session', '/api/helium10-session/:id'], authMiddleware, async (req, res) => {
+  const id = req.params.id || 1;
   try {
-    const result = await db.execute(`SELECT session_json, updated_at FROM helium10_session WHERE id = 1`);
+    const result = await db.execute({
+      sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`,
+      args: [id]
+    });
     const row = result.rows[0];
     if (!row) {
-      return res.status(404).json({ message: 'Helium 10 session not configured by admin' });
+      return res.status(404).json({ message: `Helium 10 session ${id} not configured by admin` });
     }
     res.json({
       sessionData: row.session_json,
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      id
     });
   } catch (err) {
-    console.error('DB error fetching helium10 session:', err);
+    console.error(`DB error fetching helium10 session ${id}:`, err);
     res.status(500).json({ message: 'DB error' });
   }
 });
@@ -836,31 +859,35 @@ async function startBackgroundSync() {
     }
   }));
 
-  async function performSync() {
+  async function performSync(instanceId = 1) {
+    const id = Number(instanceId);
     try {
       // LOG ATTEMPT
       await dbExecuteWithRetry({
         sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Attempt', 'Starting background sync cycle']
+        args: ['Attempt', `Starting background sync cycle for instance ${id}`]
       });
 
       // Check if already syncing + Stale worker protection (if stuck for >15 mins)
-      const statusCheck = await dbExecuteWithRetry('SELECT is_syncing, last_success, message FROM sync_status WHERE id = 1');
+      const statusCheck = await dbExecuteWithRetry({
+        sql: 'SELECT is_syncing, last_success, message FROM sync_status WHERE id = ?',
+        args: [id]
+      });
       const status = statusCheck.rows[0];
 
       if (status?.is_syncing === 1) {
         const lastUpdate = new Date(status.last_success || 0).getTime();
         const nowTime = Date.now();
         if (nowTime - lastUpdate > 15 * 60 * 1000) {
-          console.warn('[BackgroundSync] Worker seems stale. Forcing reset.');
+          console.warn(`[BackgroundSync] Worker ${id} seems stale. Forcing reset.`);
           await dbExecuteWithRetry({
             sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-            args: ['Recovery', 'Forcing reset of stale is_syncing flag']
+            args: ['Recovery', `Forcing reset of stale is_syncing flag for instance ${id}`]
           });
         } else {
           await dbExecuteWithRetry({
             sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-            args: ['Skip', 'Already syncing (active)']
+            args: ['Skip', `Instance ${id} already syncing (active)`]
           });
           return;
         }
@@ -868,40 +895,43 @@ async function startBackgroundSync() {
 
       // Set syncing state
       await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET is_syncing = 1, message = ? WHERE id = 1',
-        args: ['Syncing...']
+        sql: 'UPDATE sync_status SET is_syncing = 1, message = ? WHERE id = ?',
+        args: [`Syncing Instance ${id}...`, id]
       });
 
-      console.log('[BackgroundSync] Starting automated synchronization...');
+      console.log(`[BackgroundSync] Starting automated synchronization for Instance ${id}...`);
 
       // Fetch latest config from DB
-      const configResult = await dbExecuteWithRetry('SELECT * FROM sync_config WHERE id = 1');
+      const configResult = await dbExecuteWithRetry({
+        sql: 'SELECT * FROM sync_config WHERE id = ?',
+        args: [id]
+      });
       const config = configResult.rows[0];
 
       if (!config) {
-        throw new Error('Sync configuration missing in database');
+        throw new Error(`Sync configuration missing for instance ${id}`);
       }
 
       const { source_url, login_url, amember_login, amember_pass } = config;
       // Step A: Attempt direct extraction
-      console.log(`[BackgroundSync] Step A: Checking session reuse at ${source_url}...`);
+      console.log(`[BackgroundSync] Instance ${id} Step A: Checking session reuse at ${source_url}...`);
       let contentPageRes;
       try {
         contentPageRes = await client.get(source_url, { timeout: 20000, responseType: 'text' });
       } catch (err) {
-        console.warn(`[BackgroundSync] Initial check timed out or failed: ${err.message}. Proceeding to login.`);
+        console.warn(`[BackgroundSync] Instance ${id} Initial check timed out or failed: ${err.message}. Proceeding to login.`);
         contentPageRes = { data: '' }; // Force login flow
       }
       let tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
       let token = tokenMatch ? tokenMatch[1] : null;
 
       if (!token) {
-        console.log('[BackgroundSync] Session expired. Performing full login flow...');
+        console.log(`[BackgroundSync] Instance ${id} Session expired. Performing full login flow...`);
         const loginPageRes = await client.get(login_url, { timeout: 10000, responseType: 'text' });
         const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
         const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
-        if (!attemptId) throw new Error('Failed to find login_attempt_id');
+        if (!attemptId) throw new Error(`[Instance ${id}] Failed to find login_attempt_id`);
 
         const formData = new URLSearchParams();
         formData.append('amember_login', amember_login);
@@ -918,29 +948,29 @@ async function startBackgroundSync() {
           timeout: 20000
         });
 
-        console.log(`[BackgroundSync] Login POST status: ${loginRes.status}`);
+        console.log(`[BackgroundSync] Instance ${id} Login POST status: ${loginRes.status}`);
 
         // --- Session Verification Step ---
-        console.log('[BackgroundSync] Step B: Verifying session at /member...');
+        console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at /member...`);
         const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 20000 });
         const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
         const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
 
-        console.log(`[BackgroundSync] Step C: Session active at /member: ${isLogged}`);
+        console.log(`[BackgroundSync] Instance ${id} Step C: Session active at /member: ${isLogged}`);
 
         // Log this state to DB for remote debugging
         await dbExecuteWithRetry({
           sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-          args: ['Diagnostic', `Session @ /member: ${isLogged}, Title: ${pageTitle}`]
+          args: ['Diagnostic', `Instance ${id} Session @ /member: ${isLogged}, Title: ${pageTitle}`]
         });
 
         if (!isLogged) {
-          console.error('[BackgroundSync] Login appeared successful but session is missing at /member.');
+          console.error(`[BackgroundSync] Instance ${id} Login appeared successful but session is missing at /member.`);
           // Don't throw yet, try the content page anyway in case /member is weird
         }
 
         // --- Final Extraction ---
-        console.log(`[BackgroundSync] Step D: Fetching content with active session: ${source_url}`);
+        console.log(`[BackgroundSync] Instance ${id} Step D: Fetching content with active session: ${source_url}`);
         contentPageRes = await client.get(source_url, {
           headers: { 'Referer': 'https://members.freelancerservice.site/member' },
           timeout: 20000,
@@ -952,70 +982,76 @@ async function startBackgroundSync() {
         token = tokenMatch ? tokenMatch[1] : null;
 
         if (!token) {
-          console.log('[BackgroundSync] First regex fail. Checking for raw token snippet...');
+          console.log(`[BackgroundSync] Instance ${id} First regex fail. Checking for raw token snippet...`);
           const altMatch = contentPageRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
           token = altMatch ? altMatch[0] : null;
         }
       }
 
       if (!token) {
-        console.error('[BackgroundSync] Final extraction failed. Status:', contentPageRes.status);
-        console.error('[BackgroundSync] Page Sample (1000 chars):', contentPageRes.data.substring(0, 1000));
+        console.error(`[BackgroundSync] Instance ${id} Final extraction failed. Status:`, contentPageRes.status);
+        console.error(`[BackgroundSync] Instance ${id} Page Sample (1000 chars):`, contentPageRes.data.substring(0, 1000));
 
         if (contentPageRes.data.includes('Cloudflare') || contentPageRes.data.includes('Access Denied')) {
-          throw new Error('Blocked by security firewall (Cloudflare/Access Denied)');
+          throw new Error(`[Instance ${id}] Blocked by security firewall (Cloudflare/Access Denied)`);
         }
 
-        throw new Error('Failed to extract token after login (Regex mismatch)');
+        throw new Error(`[Instance ${id}] Failed to extract token after login (Regex mismatch)`);
       }
 
       // 4. Update Database
       const now = new Date().toISOString();
       await dbExecuteWithRetry({
         sql: `INSERT INTO helium10_session (id, session_json, updated_at) 
-             VALUES (1, ?, ?) 
+             VALUES (?, ?, ?) 
              ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
-        args: [token.trim(), now]
+        args: [id, token.trim(), now]
       });
 
       await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0 WHERE id = 1',
-        args: [now, 'Success']
+        sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0 WHERE id = ?',
+        args: [now, 'Success', id]
       });
 
       await dbExecuteWithRetry({
         sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Success', `Synced at ${new Date().toLocaleString()}`]
+        args: ['Success', `Instance ${id} Synced at ${new Date().toLocaleString()}`]
       });
 
-      console.log('[BackgroundSync] ✅ Successfully synced token');
+      console.log(`[BackgroundSync] ✅ Successfully synced token for Instance ${id}`);
     } catch (err) {
-      console.error('[BackgroundSync] ❌ Sync error:', err.message);
+      console.error(`[BackgroundSync] ❌ Instance ${id} Sync error:`, err.message);
       await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0 WHERE id = 1',
-        args: [err.message, 'Error: ' + err.message]
-      }).catch(e => console.error('[Fatal] Could not update sync_status with error:', e.message));
+        sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0 WHERE id = ?',
+        args: [err.message, 'Error: ' + err.message, id]
+      }).catch(e => console.error(`[Fatal] Could not update sync_status for ${id} with error:`, e.message));
 
       await dbExecuteWithRetry({
         sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Error', err.message]
+        args: ['Error', `Instance ${id}: ${err.message}`]
       }).catch(() => { });
     } finally {
       // Ensure syncing flag is reset even on fatal database blowups if possible
       try {
-        await db.execute('UPDATE sync_status SET is_syncing = 0 WHERE id = 1');
+        await db.execute({ sql: 'UPDATE sync_status SET is_syncing = 0 WHERE id = ?', args: [id] });
       } catch (e) { /* total db failure */ }
     }
   }
 
   global.triggerBackgroundSync = performSync;
 
-  // Perform initial sync on startup
-  setTimeout(performSync, 5000); // Wait 5s for server to settle
+  // Perform initial sync on startup for all instances
+  setTimeout(() => {
+    performSync(1);
+    setTimeout(() => performSync(2), 30000); // Stagger them on startup
+  }, 5000);
 
   // Schedule every 5 minutes
   console.log('[BackgroundSync] Worker scheduled for every 5 minutes');
-  setInterval(performSync, 5 * 60 * 1000);
+  setInterval(() => {
+    performSync(1);
+    setTimeout(() => performSync(2), 2.5 * 60 * 1000); // Offset instance 2 by 2.5 mins
+  }, 5 * 60 * 1000);
 }
 
 // --- Keep-Alive Pinger ---

@@ -57,6 +57,7 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState('dashboard'); // 'dashboard', 'users', 'sync', 'settings'
   const [editingDateId, setEditingDateId] = useState(null);
   const [tempDate, setTempDate] = useState('');
+  const [selectedInstance, setSelectedInstance] = useState(1); // 1 or 2
 
   const loadUsers = async () => {
     try {
@@ -68,15 +69,15 @@ export default function AdminPage() {
     }
   };
 
-  const loadHeliumSession = async () => {
+  const loadHeliumSession = async (id = selectedInstance) => {
     try {
-      const res = await axios.get('/api/admin/helium10-session');
+      const res = await axios.get(`/api/admin/helium10-session/${id}`);
       if (res.data) {
         setHeliumSessionJson(res.data.sessionJson || '');
         setHeliumSessionUpdatedAt(res.data.updatedAt || '');
       }
     } catch (e) {
-      console.error('Failed to load Helium10 session', e);
+      console.error(`Failed to load Helium10 session ${id}`, e);
     }
   };
 
@@ -89,21 +90,21 @@ export default function AdminPage() {
     }
   };
 
-  const loadSyncStatus = async () => {
+  const loadSyncStatus = async (id = selectedInstance) => {
     try {
-      const res = await axios.get('/api/admin/sync-debug');
+      const res = await axios.get(`/api/admin/sync-debug/${id}`);
       setSyncStatus(res.data);
     } catch (e) {
-      console.error('Failed to load sync status', e);
+      console.error(`Failed to load sync status ${id}`, e);
     }
   };
 
-  const loadSyncConfig = async () => {
+  const loadSyncConfig = async (id = selectedInstance) => {
     try {
-      const res = await axios.get('/api/admin/sync-config');
+      const res = await axios.get(`/api/admin/sync-config/${id}`);
       setSyncConfig(res.data);
     } catch (e) {
-      console.error('Failed to load sync config', e);
+      console.error(`Failed to load sync config ${id}`, e);
     }
   };
 
@@ -119,12 +120,12 @@ export default function AdminPage() {
   const handleManualSync = async () => {
     try {
       setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
-      await axios.post('/api/admin/sync-trigger');
+      await axios.post(`/api/admin/sync-trigger/${selectedInstance}`);
 
       // Fast Polling
       let attempts = 0;
       const poll = setInterval(async () => {
-        const res = await axios.get('/api/admin/sync-debug');
+        const res = await axios.get(`/api/admin/sync-debug/${selectedInstance}`);
         setSyncStatus(res.data);
         attempts++;
         if (!res.data.isSyncing || attempts > 10) {
@@ -138,17 +139,17 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadUsers();
-    loadHeliumSession();
+    loadHeliumSession(selectedInstance);
     loadSyncSecret();
-    loadSyncStatus();
-    loadSyncConfig();
+    loadSyncStatus(selectedInstance);
+    loadSyncConfig(selectedInstance);
     loadExtensionMeta();
     const interval = setInterval(() => {
-      loadSyncStatus();
-      loadHeliumSession();
+      loadSyncStatus(selectedInstance);
+      loadHeliumSession(selectedInstance);
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedInstance]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -216,9 +217,9 @@ export default function AdminPage() {
     setHeliumSaving(true);
     try {
       let cleanedData = heliumSessionJson.trim();
-      await axios.put('/api/admin/helium10-session', { sessionData: cleanedData });
-      alert('Helium 10 session updated!');
-      loadHeliumSession();
+      await axios.put(`/api/admin/helium10-session/${selectedInstance}`, { sessionData: cleanedData });
+      alert(`Helium 10 (Instance ${selectedInstance}) session updated!`);
+      loadHeliumSession(selectedInstance);
     } catch (e) {
       alert('Failed to update session');
     } finally {
@@ -251,8 +252,8 @@ export default function AdminPage() {
     e.preventDefault();
     setSyncConfigLoading(true);
     try {
-      await axios.put('/api/admin/sync-config', syncConfig);
-      alert('Config updated!');
+      await axios.put(`/api/admin/sync-config/${selectedInstance}`, syncConfig);
+      alert(`Config for Instance ${selectedInstance} updated!`);
     } catch (e) {
       alert('Failed to update config');
     } finally {
@@ -326,6 +327,12 @@ export default function AdminPage() {
             <h1>{activeSection.charAt(0).toUpperCase() + activeSection.slice(1)}</h1>
             <p>Bharat Tools Hub Administrative Suite</p>
           </div>
+          {(activeSection === 'sync' || activeSection === 'settings' || activeSection === 'dashboard') && (
+            <div className="instance-selector-v2">
+              <button className={selectedInstance === 1 ? 'active' : ''} onClick={() => setSelectedInstance(1)}>Instance 1</button>
+              <button className={selectedInstance === 2 ? 'active' : ''} onClick={() => setSelectedInstance(2)}>Instance 2</button>
+            </div>
+          )}
           <div className="header-meta-v2">
             <div className="status-pill-v2 online">
               <Activity size={12} /> Live
