@@ -340,39 +340,46 @@ app.post('/api/auth/login', async (req, res) => {
     const { browserId } = req.body;
 
     // Extract IP Address with robust multi-header support
-    let clientIp = req.headers['cf-connecting-ip'] ||
-      req.headers['x-real-ip'] ||
-      (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
-      req.ip ||
-      req.socket.remoteAddress;
+    function getCleanIp(req) {
+      let ip = req.headers['cf-connecting-ip'] ||
+        req.headers['x-real-ip'] ||
+        (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
+        req.ip ||
+        req.socket.remoteAddress ||
+        '0.0.0.0';
 
-    if (clientIp && typeof clientIp === 'string') {
-      // Normalize IPv6 mapped IPv4
-      if (clientIp.startsWith('::ffff:')) {
-        clientIp = clientIp.replace('::ffff:', '');
+      if (typeof ip === 'string') {
+        if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
+        if (ip === '::1') ip = '127.0.0.1';
+        return ip.trim();
       }
-      clientIp = clientIp.trim();
+      return ip;
     }
 
-    console.log(`Login debug: User[${user.username}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] StoredIP[${user.last_ip}] BrowserID[${browserId}] StoredBID[${user.browser_id}]`);
+    const clientIp = getCleanIp(req);
+    const storedIp = user.last_ip ? getCleanIp({ headers: { 'x-real-ip': user.last_ip } }) : null;
+
+    console.log(`Login debug: User[${user.username}] isAdmin[${isAdmin}] is_logged_in[${user.is_logged_in}] IP[${clientIp}] StoredIP[${storedIp}] BrowserID[${browserId}] StoredBID[${user.browser_id}]`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
       const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
       const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
 
-      const isSameIp = user.last_ip && user.last_ip === clientIp;
+      const isSameIp = storedIp && storedIp === clientIp;
       const isSameBrowser = browserId && user.browser_id && user.browser_id === browserId;
       const isStale = minutesSinceActive > 5;
 
-      // SUCCESS CONDITIONS:
-      // 1. Same Browser (Regardless of IP)
-      // 2. Same IP (Regardless of Browser)
-      // 3. Previous session is stale (>5 mins)
+      // REQUIREMENT:
+      // 1. Same Browser (Regardless of IP) -> ALLOW (Kick old)
+      // 2. SAME IP (Regardless of Browser) -> ALLOW (Kick old)
+      // 3. Different IP + Different Browser -> BLOCK (403)
+      // 4. Stale session (>5 mins) -> ALLOW (Anywhere)
+
       if (isSameBrowser || isSameIp || isStale) {
-        console.log(`Allowing session takeover for ${user.username}: SameBrowser[${isSameBrowser}] SameIP[${isSameIp}] Stale[${isStale}]`);
+        console.log(`Allowing takeover for ${user.username}: SameBrowser[${isSameBrowser}] SameIP[${isSameIp}] Stale[${isStale}]`);
       } else {
-        console.log(`Blocking login for ${user.username} - IP Mismatch and different browser. StoredIP[${user.last_ip}] vs NewIP[${clientIp}]`);
+        console.log(`Blocking login for ${user.username} - IP Mismatch and different browser. StoredIP[${storedIp}] vs NewIP[${clientIp}]`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
