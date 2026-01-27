@@ -339,59 +339,54 @@ app.post('/api/auth/login', async (req, res) => {
     // Extract browserId from request
     const { browserId } = req.body;
 
-    // --- HARDENED IP DETECTION ---
-    function getCleanIp(req) {
-      let ip = 'unknown';
-      try {
-        ip = req.headers['cf-connecting-ip'] ||
-          req.headers['x-real-ip'] ||
-          (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
-          req.ip ||
-          req.socket.remoteAddress ||
-          '0.0.0.0';
-
-        if (typeof ip === 'string') {
-          // Normalize IPv6-mapped IPv4
-          if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
-          // Normalize localhost
-          if (ip === '::1') ip = '127.0.0.1';
-          // Remove port if present
-          if (ip.includes(':') && !ip.includes('.')) {
-            // Likely raw IPv6, leave as is but trim
-          } else if (ip.includes(':')) {
-            ip = ip.split(':')[0];
-          }
-          return ip.trim();
-        }
-      } catch (e) { console.error('[IP] Parse error:', e); }
-      return String(ip).trim();
+    // --- ULTIMATE IP DETECTION & NORMALIZATION ---
+    function normalizeIp(ip) {
+      if (!ip || typeof ip !== 'string') return '0.0.0.0';
+      let clean = ip.trim();
+      // Remove IPv6 transition prefix
+      if (clean.startsWith('::ffff:')) clean = clean.replace('::ffff:', '');
+      // Standardize localhost
+      if (clean === '::1') return '127.0.0.1';
+      // If it's an IPv4 address with a port (e.g. 1.2.3.4:5678), remove the port
+      if (clean.includes('.') && clean.includes(':')) {
+        clean = clean.split(':')[0];
+      }
+      return clean;
     }
 
-    const clientIp = getCleanIp(req);
-    // When reading from DB, also normalize it to be 100% sure
-    const storedIp = user.last_ip ? getCleanIp({ headers: { 'x-real-ip': user.last_ip } }) : null;
+    function getRawIp(req) {
+      return req.headers['cf-connecting-ip'] ||
+        req.headers['x-real-ip'] ||
+        (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
+        req.ip ||
+        req.socket.remoteAddress;
+    }
 
-    console.log(`[Login] ${user.username} | IP: ${clientIp} | Stored: ${storedIp} | BID: ${browserId} | StoredBID: ${user.browser_id}`);
+    const clientIpRaw = getRawIp(req);
+    const clientIp = normalizeIp(clientIpRaw);
+    const storedIp = normalizeIp(user.last_ip);
+
+    console.log(`[Login Auth Check] User: ${user.username} | RequestIP: ${clientIp} | StoredIP: ${storedIp} | BrowserID: ${browserId} | StoredBID: ${user.browser_id}`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
       const now = new Date();
       const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
       const minutesSinceActive = lastActive ? (now - lastActive) / (1000 * 60) : Infinity;
 
-      const isSameIp = (storedIp && clientIp && storedIp === clientIp);
+      const isSameIp = (clientIp === storedIp);
       const isSameBrowser = (browserId && user.browser_id && user.browser_id === browserId);
-      const isStale = minutesSinceActive > 5;
+      const isStale = (minutesSinceActive > 5);
 
-      // REQUIREMENT:
-      // 1. Same IP (regardless of browser) -> ALLOW (Kick old)
-      // 2. Same Browser (regardless of IP) -> ALLOW (Kick old)
-      // 3. Stale session -> ALLOW (Kick old)
-      // 4. Different IP AND Different Browser -> BLOCK (403)
+      // CRITICAL POLICY:
+      // 1. Same Browser -> ALLOW & REFRESH
+      // 2. SAME IP (Different Browser) -> ALLOW & TERMINATE OLD (This is the "Takeover")
+      // 3. Stale Session -> ALLOW & REFRESH
+      // 4. DIFFERENT IP AND DIFFERENT BROWSER -> BLOCK (403)
 
       if (isSameIp || isSameBrowser || isStale) {
-        console.log(`[Takeover] Allowing for ${user.username} (SameIP:${isSameIp}, SameBID:${isSameBrowser}, Stale:${isStale})`);
+        console.log(`[Takeover Success] Logged in for ${user.username}. (SameIP: ${isSameIp}, SameBID: ${isSameBrowser}, Stale: ${isStale})`);
       } else {
-        console.log(`[Blocked] Concurrent session on different IP/Device for ${user.username}`);
+        console.log(`[Takeover Blocked] Concurrent session on different IP for ${user.username}. Expected: ${storedIp}, Received: ${clientIp}`);
         return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
