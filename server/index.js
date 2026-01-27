@@ -97,6 +97,8 @@ async function initDb() {
     try { await db.execute('ALTER TABLE users ADD COLUMN last_active_at TEXT'); } catch (e) { }
     // Migration: Add browser_id column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN browser_id TEXT'); } catch (e) { }
+    // Migration: Add current_session_id column (users)
+    try { await db.execute('ALTER TABLE users ADD COLUMN current_session_id TEXT'); } catch (e) { }
 
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
@@ -216,7 +218,7 @@ const upload = multer({
 // Redundant initDb block removed
 
 // --- Helpers ---
-function createToken(user, browser_id) {
+function createToken(user, browser_id, session_id) {
   const role = String(user.role || '').toLowerCase();
   const username = String(user.username || '').toLowerCase();
   // robust admin detection for token duration
@@ -229,7 +231,8 @@ function createToken(user, browser_id) {
       email: user.email,
       username: user.username,
       role: isAdmin ? 'admin' : user.role,
-      browser_id: browser_id || user.browser_id || null
+      browser_id: browser_id || user.browser_id || null,
+      session_id: session_id || user.current_session_id || null
     },
     JWT_SECRET,
     { expiresIn }
@@ -249,7 +252,7 @@ function authMiddleware(req, res, next) {
     if (role === 'user') {
       try {
         const result = await db.execute({
-          sql: 'SELECT access_expires_at, last_active_at, browser_id FROM users WHERE id = ?',
+          sql: 'SELECT access_expires_at, last_active_at, browser_id, current_session_id FROM users WHERE id = ?',
           args: [decoded.id]
         });
         const user = result.rows[0];
@@ -261,11 +264,12 @@ function authMiddleware(req, res, next) {
           return res.status(403).json({ message: 'Access expired' });
         }
 
-        // Session Takeover Check: If token's browser_id doesn't match DB's browser_id, 
-        // it means another login has happened elsewhere.
-        if (decoded.browser_id && user.browser_id && decoded.browser_id !== user.browser_id) {
-          console.log(`[Auth] Session displaced for user ${decoded.username}. TokenBID: ${decoded.browser_id} vs DB_BID: ${user.browser_id}`);
-          return res.status(401).json({ message: 'Session active on another device' });
+        // Session Displacement Check (The "Automatic Logout" part)
+        // If the session_id in the token doesn't match the one in DB, it means 
+        // a newer login has happened elsewhere (or on the same browser).
+        if (decoded.session_id && user.current_session_id && decoded.session_id !== user.current_session_id) {
+          console.log(`[Auth] Session displaced for ${decoded.username}. TokenSession[${decoded.session_id}] vs current[${user.current_session_id}]`);
+          return res.status(401).json({ message: 'Session expired - logged in elsewhere' });
         }
 
         // Refresh last_active_at in background if more than 2 minutes passed
@@ -359,10 +363,17 @@ app.post('/api/auth/login', async (req, res) => {
       const isSameBrowser = browserId && user.browser_id && user.browser_id === browserId;
       const isStale = minutesSinceActive > 5;
 
-      if (!isSameIp && !isSameBrowser && !isStale) {
-        console.log(`[Takeover] User ${user.username} logging in from new location. Previous session will be invalidated.`);
-        // We allow the login (Takeover), and the authMiddleware will handle logging out the old session 
-        // once it detects the browser_id mismatch in the JWT vs DB.
+      // REQUIREMENT:
+      // 1. Same browser login: ALLOW re-login, should kick out old session (takeover).
+      // 2. Same IP login: ALLOW takeover.
+      // 3. Different IP + Different Browser: BLOCK with 403 error.
+      // 4. Stale session: ALLOW anywhere.
+
+      if (isSameBrowser || isSameIp || isStale) {
+        console.log(`Allowing takeover login for ${user.username}: SameBrowser[${isSameBrowser}] SameIP[${isSameIp}] Stale[${isStale}]`);
+      } else {
+        console.log(`Blocking login for ${user.username} - Different IP and Browser. CurrentIP[${user.last_ip}] vs New[${clientIp}]`);
+        return res.status(403).json({ message: 'Authentication error. User already logged in on another device. Contact administrator.' });
       }
     }
 
@@ -388,16 +399,19 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Update: We will update is_logged_in for everyone so they show as active, 
     // but the blocking logic above STRICTLY bypasses admins.
-    // Set is_logged_in = 1 and update last_ip, browser_id and last_active_at
+    // Generate a fresh session ID for this login
+    const newSessionId = Math.random().toString(36).substring(2, 15) + Date.now();
+
+    // Set is_logged_in = 1 and update last_ip, browser_id, session_id and last_active_at
     await db.execute({
-      sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, browser_id = ?, last_active_at = ? WHERE id = ?`,
-      args: [clientIp, browserId || (user.browser_id || null), new Date().toISOString(), user.id]
+      sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, browser_id = ?, current_session_id = ?, last_active_at = ? WHERE id = ?`,
+      args: [clientIp, browserId || (user.browser_id || null), newSessionId, new Date().toISOString(), user.id]
     });
 
     // Final check for user object before token creation to ensure role is passed correctly for admin
     if (isAdmin) user.role = 'admin';
 
-    const token = createToken(user, browserId);
+    const token = createToken(user, browserId, newSessionId);
     console.log('Login successful for user:', user.username, 'Role:', user.role);
     res.json({
       token,
