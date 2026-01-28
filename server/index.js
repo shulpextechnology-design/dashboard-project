@@ -993,8 +993,13 @@ async function startBackgroundSync() {
       });
       const config = configResult.rows[0];
 
-      if (!config) {
-        throw new Error(`Sync configuration missing for instance ${id}`);
+      if (!config || !config.source_url || !config.login_url) {
+        console.log(`[BackgroundSync] Instance ${id} - Sync configuration not set up yet. Skipping auto-sync.`);
+        await dbExecuteWithRetry({
+          sql: 'UPDATE sync_status SET last_error = NULL, message = ?, is_syncing = 0 WHERE id = ?',
+          args: ['Configuration not set up', id]
+        });
+        return;
       }
 
       const { source_url, login_url, amember_login, amember_pass } = config;
