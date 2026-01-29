@@ -17,7 +17,7 @@ app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate c
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.3.0-multi-instance';
+const BACKEND_VERSION = 'v1.3.5-js-fix';
 
 // --- Database Initialization ---
 async function initDb() {

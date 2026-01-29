@@ -284,7 +284,8 @@ export default function AdminPage() {
             alert('Jungle Scout credentials updated!');
             loadJsCredentials();
         } catch (e) {
-            alert('Failed to update Jungle Scout credentials');
+            const errorMsg = e.response?.data?.message || e.message;
+            alert('Failed to update Jungle Scout credentials: ' + errorMsg);
         } finally {
             setJsSaving(false);
         }
