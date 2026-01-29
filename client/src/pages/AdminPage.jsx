@@ -58,6 +58,8 @@ export default function AdminPage() {
     const [editingDateId, setEditingDateId] = useState(null);
     const [tempDate, setTempDate] = useState('');
     const [selectedInstance, setSelectedInstance] = useState(1); // 1 or 2
+    const [jsCredentials, setJsCredentials] = useState({ login_id: '', password: '' });
+    const [jsSaving, setJsSaving] = useState(false);
 
     const loadUsers = async () => {
         try {
@@ -117,6 +119,18 @@ export default function AdminPage() {
         }
     };
 
+    const loadJsCredentials = async () => {
+        try {
+            const res = await axios.get('/api/admin/junglescout-credentials');
+            setJsCredentials({
+                login_id: res.data.login_id || '',
+                password: res.data.password || ''
+            });
+        } catch (e) {
+            console.error('Failed to load Jungle Scout credentials', e);
+        }
+    };
+
     const handleManualSync = async () => {
         try {
             setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
@@ -144,6 +158,7 @@ export default function AdminPage() {
         loadSyncStatus(selectedInstance);
         loadSyncConfig(selectedInstance);
         loadExtensionMeta();
+        loadJsCredentials();
         const interval = setInterval(() => {
             loadSyncStatus(selectedInstance);
             loadHeliumSession(selectedInstance);
@@ -258,6 +273,20 @@ export default function AdminPage() {
             alert('Failed to update config');
         } finally {
             setSyncConfigLoading(false);
+        }
+    };
+
+    const handleSaveJsCredentials = async (e) => {
+        e.preventDefault();
+        setJsSaving(true);
+        try {
+            await axios.put('/api/admin/junglescout-credentials', jsCredentials);
+            alert('Jungle Scout credentials updated!');
+            loadJsCredentials();
+        } catch (e) {
+            alert('Failed to update Jungle Scout credentials');
+        } finally {
+            setJsSaving(false);
         }
     };
 
@@ -528,6 +557,28 @@ export default function AdminPage() {
                                 <input type="file" onChange={e => setExtensionFile(e.target.files[0])} />
                                 <button className="admin-submit-btn" onClick={handleExtensionUpload} disabled={uploading}>Upload Zip</button>
                                 {lastUploaded && <p className="last-uploaded-meta-v2">Last: {new Date(lastUploaded).toLocaleString()}</p>}
+                            </section>
+
+                            <section className="admin-card-v2">
+                                <div className="card-header-v2"><Key size={20} /> <h2>Jungle Scout Credentials</h2></div>
+                                <form onSubmit={handleSaveJsCredentials} className="admin-form-v2">
+                                    <input
+                                        placeholder="Jungle Scout Login ID"
+                                        value={jsCredentials.login_id}
+                                        onChange={e => setJsCredentials({ ...jsCredentials, login_id: e.target.value })}
+                                        required
+                                    />
+                                    <input
+                                        placeholder="Jungle Scout Password"
+                                        type="text"
+                                        value={jsCredentials.password}
+                                        onChange={e => setJsCredentials({ ...jsCredentials, password: e.target.value })}
+                                        required
+                                    />
+                                    <button type="submit" className="admin-submit-btn" disabled={jsSaving}>
+                                        {jsSaving ? 'Saving...' : 'Save credentials'}
+                                    </button>
+                                </form>
                             </section>
                         </div>
                     )}

@@ -39,6 +39,7 @@ export default function DashboardPage() {
         { name: 'Bharat Tools Hub Extensions', icon: <Puzzle size={24} color="#0b9d86" />, action: handleExtensionDownload },
         { name: 'Helium 10 (Instance 1)', icon: <Zap size={24} color="#0b9d86" />, action: () => navigate('/helium10/1') },
         { name: 'Helium 10 (Instance 2)', icon: <Zap size={24} color="#0b9d86" />, action: () => navigate('/helium10/2') },
+        { name: 'Jungle Scout', icon: <img src="/jungle-scout-logo.jpg" alt="Jungle Scout" style={{ width: 24, height: 24, objectFit: 'contain' }} />, action: () => navigate('/junglescout/1') },
     ];
 
     const filteredTools = tools.filter(tool =>

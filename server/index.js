@@ -90,6 +90,16 @@ async function initDb() {
       )
     `);
 
+    // 7. Jungle Scout credentials table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS junglescout_credentials (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        login_id TEXT NOT NULL,
+        password TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
     // Seed/Migrate as needed...
     // Migration: Add is_demo column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN is_demo INTEGER DEFAULT 0'); } catch (e) { }
@@ -135,6 +145,16 @@ async function initDb() {
       if (checkStatus.rows.length === 0) {
         await db.execute({ sql: 'INSERT INTO sync_status (id, message) VALUES (?, ?)', args: [id, `Worker ${id} initialized`] });
       }
+    }
+
+    // Seed default Jungle Scout credentials
+    const checkJSCreds = await db.execute({ sql: 'SELECT * FROM junglescout_credentials WHERE id = 1' });
+    if (checkJSCreds.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT INTO junglescout_credentials (id, login_id, password, updated_at) VALUES (1, ?, ?, ?)`,
+        args: ['premiumtools@junglescout.com', 'P@ssw0rd123!', new Date().toISOString()]
+      });
+      console.log('Initial Jungle Scout credentials seeded');
     }
 
     console.log('Database initialization complete');
@@ -867,6 +887,45 @@ app.get('/api/helium10-session/:id', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error(`DB error fetching helium10 session ${id}:`, err);
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
+// --- User: fetch Jungle Scout credentials ---
+app.get('/api/junglescout-credentials', authMiddleware, async (req, res) => {
+  try {
+    const result = await db.execute(`SELECT login_id, password FROM junglescout_credentials WHERE id = 1`);
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ message: 'Jungle Scout credentials not configured' });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
+// --- Admin: manage Jungle Scout credentials ---
+app.get('/api/admin/junglescout-credentials', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await db.execute(`SELECT login_id, password, updated_at FROM junglescout_credentials WHERE id = 1`);
+    res.json(result.rows[0] || { login_id: '', password: '', updated_at: null });
+  } catch (err) {
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
+app.put('/api/admin/junglescout-credentials', authMiddleware, adminOnly, async (req, res) => {
+  const { login_id, password } = req.body;
+  if (!login_id || !password) return res.status(400).json({ message: 'Missing fields' });
+  const now = new Date().toISOString();
+  try {
+    await db.execute({
+      sql: `INSERT INTO junglescout_credentials (id, login_id, password, updated_at) 
+            VALUES (1, ?, ?, ?) 
+            ON CONFLICT(id) DO UPDATE SET login_id = excluded.login_id, password = excluded.password, updated_at = excluded.updated_at`,
+      args: [login_id, password, now]
+    });
+    res.json({ success: true, updated_at: now });
+  } catch (err) {
     res.status(500).json({ message: 'DB error' });
   }
 });

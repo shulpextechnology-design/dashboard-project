@@ -8,6 +8,7 @@ import ExtensionPage from './pages/ExtensionPage';
 import SettingsPage from './pages/SettingsPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import AdminPage1 from './pages/AdminPage1';
+import JungleScoutPage from './pages/JungleScoutPage';
 import SidebarLayout from './components/SidebarLayout';
 import { useAuth, AuthProvider } from './auth';
 
@@ -159,6 +160,16 @@ function AppRoutes() {
                     <PrivateRoute>
                         <SidebarLayout>
                             <Helium10Page />
+                        </SidebarLayout>
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/junglescout/:id"
+                element={
+                    <PrivateRoute>
+                        <SidebarLayout>
+                            <JungleScoutPage />
                         </SidebarLayout>
                     </PrivateRoute>
                 }
