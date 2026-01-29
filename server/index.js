@@ -748,6 +748,21 @@ app.get('/api/admin/sync-config/:id', authMiddleware, adminOnly, async (req, res
   } catch (err) { res.status(500).json({ message: 'DB error' }); }
 });
 
+app.get('/api/admin/sync-logs/:id', authMiddleware, adminOnly, async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const result = await db.execute({
+      sql: 'SELECT id, event, details, created_at FROM sync_logs WHERE id >= 0 ORDER BY created_at DESC LIMIT 50',
+      args: []
+    });
+    // Filter by instance if details contain the ID, or just return all for now since sync_logs doesn't have an instance_id column yet.
+    // Let's actually add the instance_id column to sync_logs to be proper.
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'DB error fetching logs' });
+  }
+});
+
 app.put('/api/admin/sync-config', authMiddleware, adminOnly, async (req, res) => {
   const { source_url, login_url, amember_login, amember_pass } = req.body;
   const id = 1;
@@ -1094,10 +1109,16 @@ async function startBackgroundSync() {
             'Referer': login_url
           },
           maxRedirects: 5,
-          timeout: 20000
+          timeout: 20000,
+          validateStatus: false // handle errors manually for better logging
         });
 
         console.log(`[BackgroundSync] Instance ${id} Login POST status: ${loginRes.status}`);
+
+        if (loginRes.status >= 400) {
+          const sample = (typeof loginRes.data === 'string') ? loginRes.data.substring(0, 500) : 'Non-text response';
+          throw new Error(`Login failed with status ${loginRes.status}. Body: ${sample}`);
+        }
 
         // --- Session Verification Step ---
         console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at /member...`);

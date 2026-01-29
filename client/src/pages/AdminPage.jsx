@@ -60,6 +60,7 @@ export default function AdminPage() {
     const [selectedInstance, setSelectedInstance] = useState(1); // 1 or 2
     const [jsCredentials, setJsCredentials] = useState({ login_id: '', password: '' });
     const [jsSaving, setJsSaving] = useState(false);
+    const [syncLogs, setSyncLogs] = useState([]);
 
     const loadUsers = async () => {
         try {
@@ -131,6 +132,15 @@ export default function AdminPage() {
         }
     };
 
+    const loadSyncLogs = async (id = selectedInstance) => {
+        try {
+            const res = await axios.get(`/api/admin/sync-logs/${id}`);
+            setSyncLogs(res.data);
+        } catch (e) {
+            console.error('Failed to load sync logs', e);
+        }
+    };
+
     const handleManualSync = async () => {
         try {
             setSyncStatus(prev => ({ ...prev, isSyncing: true, message: 'Syncing...' }));
@@ -159,9 +169,11 @@ export default function AdminPage() {
         loadSyncConfig(selectedInstance);
         loadExtensionMeta();
         loadJsCredentials();
+        loadSyncLogs(selectedInstance);
         const interval = setInterval(() => {
             loadSyncStatus(selectedInstance);
             loadHeliumSession(selectedInstance);
+            loadSyncLogs(selectedInstance);
         }, 30000);
         return () => clearInterval(interval);
     }, [selectedInstance]);
@@ -526,17 +538,32 @@ export default function AdminPage() {
                     {activeSection === 'sync' && (
                         <div className="sync-horizontal-layout-v2">
                             <section className="admin-card-v2">
-                                <div className="card-header-v2"><Key size={20} /> <h2>Manual Helium Sync</h2></div>
+                                <div className="card-header-v2"><Key size={20} /> <h2>Helium Instance {selectedInstance} Sync</h2></div>
                                 <textarea rows={8} value={heliumSessionJson} onChange={(e) => setHeliumSessionJson(e.target.value)} placeholder="Paste session..." />
-                                <button className="sync-btn-v2" onClick={handleSaveHeliumSession} disabled={heliumSaving}>Sync Now</button>
+                                <button className="sync-btn-v2" onClick={handleSaveHeliumSession} disabled={heliumSaving}>Update Session</button>
                             </section>
                             <section className="admin-card-v2">
-                                <div className="card-header-v2"><Zap size={20} /> <h2>Worker Status</h2></div>
+                                <div className="card-header-v2"><Zap size={20} /> <h2>Status (Instance {selectedInstance})</h2></div>
                                 <div className="status-grid-v2">
                                     <div className="status-item-v2"><label>Last Sync:</label> <span>{syncStatus.lastSuccess ? new Date(syncStatus.lastSuccess).toLocaleString() : 'Never'}</span></div>
                                     <div className="status-item-v2"><label>Result:</label> <span className={syncStatus.message === 'Success' ? 'healthy' : 'error'}>{syncStatus.message}</span></div>
                                 </div>
                                 <button className="admin-submit-btn" onClick={handleManualSync} disabled={syncStatus.isSyncing}>Force Update</button>
+                            </section>
+
+                            <section className="admin-card-v2 full-width-v2">
+                                <div className="card-header-v2"><Activity size={20} /> <h2>Recent Logs (Filter: Instance {selectedInstance})</h2></div>
+                                <div className="sync-logs-container-v2" style={{ maxHeight: '300px', overflowY: 'auto', background: '#f8fafc', padding: '15px', borderRadius: '10px', fontSize: '13px' }}>
+                                    {syncLogs.length === 0 ? <p>No logs available</p> : syncLogs.map(log => (
+                                        <div key={log.id} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #e2e8f0' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span style={{ fontWeight: 'bold', color: log.event === 'Error' ? '#ef4444' : '#0b9d86' }}>{log.event}</span>
+                                                <span style={{ color: '#64748b' }}>{new Date(log.created_at).toLocaleString()}</span>
+                                            </div>
+                                            <div style={{ color: '#1e293b', wordBreak: 'break-all' }}>{log.details}</div>
+                                        </div>
+                                    ))}
+                                </div>
                             </section>
                         </div>
                     )}
@@ -544,7 +571,7 @@ export default function AdminPage() {
                     {activeSection === 'settings' && (
                         <div className="settings-modular-layout-v2">
                             <section className="admin-card-v2">
-                                <div className="card-header-v2"><ShieldCheck size={20} /> <h2>Gateway Config</h2></div>
+                                <div className="card-header-v2"><ShieldCheck size={20} /> <h2>Gateway Config (Instance {selectedInstance})</h2></div>
                                 <form onSubmit={handleSaveSyncConfig} className="admin-form-v2">
                                     <input placeholder="Source URL" value={syncConfig.source_url} onChange={e => setSyncConfig({ ...syncConfig, source_url: e.target.value })} />
                                     <input placeholder="Login URL" value={syncConfig.login_url} onChange={e => setSyncConfig({ ...syncConfig, login_url: e.target.value })} />
