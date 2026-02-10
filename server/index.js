@@ -1117,6 +1117,11 @@ async function startBackgroundSync() {
           throw new Error(`Login failed with status ${loginRes.status}. Body: ${sample}`);
         }
 
+        // Check if we are still on the login page (Login Failed case with 200 OK)
+        if (typeof loginRes.data === 'string' && (loginRes.data.includes('name="login_attempt_id"') || loginRes.data.includes('amember_login'))) {
+          throw new Error('Login failed (Credentials might be incorrect or account locked)');
+        }
+
         // --- Session Verification Step ---
         console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at /member...`);
         const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 20000 });
@@ -1188,6 +1193,12 @@ async function startBackgroundSync() {
       console.log(`[BackgroundSync] ✅ Successfully synced token for Instance ${id}`);
     } catch (err) {
       console.error(`[BackgroundSync] ❌ Instance ${id} Sync error:`, err.message);
+      if (err.response) {
+        console.error(`[BackgroundSync] ❌ Failed URL: ${err.config?.url}`);
+        console.error(`[BackgroundSync] ❌ Status: ${err.response.status}`);
+        console.error(`[BackgroundSync] ❌ Response Data:`, typeof err.response.data === 'string' ? err.response.data.substring(0, 200) : 'Non-text response');
+      }
+
       await dbExecuteWithRetry({
         sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0 WHERE id = ?',
         args: [err.message, 'Error: ' + err.message, id]
@@ -1195,7 +1206,7 @@ async function startBackgroundSync() {
 
       await dbExecuteWithRetry({
         sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Error', `Instance ${id}: ${err.message}`]
+        args: ['Error', `Instance ${id}: ${err.message} (${err.config?.url || 'Unknown URL'})`]
       }).catch(() => { });
     } finally {
       // Ensure syncing flag is reset even on fatal database blowups if possible

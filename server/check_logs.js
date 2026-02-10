@@ -8,15 +8,18 @@ const db = createClient({
 
 async function run() {
     try {
-        const res = await db.execute('SELECT * FROM sync_logs ORDER BY id DESC LIMIT 20');
+        const res = await db.execute('SELECT * FROM sync_logs ORDER BY id DESC LIMIT 50');
         console.log('--- LATEST SYNC LOGS ---');
         res.rows.forEach(row => {
             console.log(`[${row.timestamp}] ${row.event}: ${row.details}`);
         });
 
-        const status = await db.execute('SELECT * FROM sync_status WHERE id = 1');
-        console.log('\n--- CURRENT STATUS ---');
-        console.log(status.rows[0]);
+        const status1 = await db.execute('SELECT * FROM sync_status WHERE id = 1');
+        const status2 = await db.execute('SELECT * FROM sync_status WHERE id = 2');
+        console.log('\n--- CURRENT STATUS (Instance 1) ---');
+        console.log(status1.rows[0]);
+        console.log('\n--- CURRENT STATUS (Instance 2) ---');
+        console.log(status2.rows[0]);
     } catch (err) {
         console.error('Error:', err);
     } finally {
