@@ -398,18 +398,15 @@ app.post('/api/auth/login', async (req, res) => {
     console.log(`[Login Auth Check] User: ${user.username} | IP: ${clientIp} | BID: ${normalizedRequestBID}`);
 
     if (!isAdmin && Number(user.is_logged_in) === 1) {
-      const now = new Date();
-      const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
-      const msSinceActive = lastActive ? (now - lastActive) : Infinity;
-
-      // SECURITY COOLDOWN: Prevent rapid-fire oscillation (must wait 5 seconds between logins)
-      // This stops automated script fighting but allows normal human switching.
-      if (msSinceActive < 5000) {
-        console.log(`[Takeover Cooling] User: ${user.username} | Last active ${msSinceActive}ms ago. Blocking for cooldown.`);
-        return res.status(429).json({ message: 'Please wait a few seconds before logging in again.' });
+      // Strict Permanent IP Lock
+      // If user is marked as logged in, they MUST be on the same IP.
+      // Time since last active does NOT matter.
+      if (clientIp !== storedIp) {
+        console.log(`[Login Blocked] User: ${user.username} is logged in on another IP. Current: ${clientIp} vs Stored: ${storedIp}`);
+        return res.status(403).json({ message: 'Authentication Error: You are already logged in on another device. Please contact your administrator to reset your session.' });
       }
 
-      console.log(`[Takeover displacing] User: ${user.username} (Latest Login Wins)`);
+      console.log(`[Re-login Allowed] User: ${user.username} re-logging on same IP (${clientIp}).`);
     }
 
     // If normal user, require active access and check expiry
