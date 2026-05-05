@@ -25,9 +25,12 @@ export default function App() {
         <p style={{ fontSize: '18px', lineHeight: '1.6', marginBottom: '20px' }}>
           <strong>Note:-</strong> Hi mam/Sir Sorry to say Unfortunately our vendor will not provide service because of personal issue and we are in loss so service is stop now. Please understand and support us. 
         </p>
-        <p style={{ fontSize: '18px', lineHeight: '1.6', marginBottom: '20px', fontWeight: 'bold' }}>
-          We kindly request you to please remove our installed extension from your device at your earliest convenience.
-        </p>
+        <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '5px', marginBottom: '20px', borderLeft: '5px solid #ffeeba', textAlign: 'left' }}>
+          <p style={{ fontSize: '18px', lineHeight: '1.6', fontWeight: 'bold', margin: 0 }}>
+            <span style={{ color: '#d39e00', textTransform: 'uppercase', display: 'block', marginBottom: '5px' }}>⚠️ Important Action Required:</span>
+            We kindly request you to please remove our installed extension from your device at your earliest convenience.
+          </p>
+        </div>
         <p style={{ fontSize: '16px', lineHeight: '1.6' }}>
           If you have any query please ask 🙏
         </p>
