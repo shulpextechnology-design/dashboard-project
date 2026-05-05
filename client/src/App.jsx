@@ -1,199 +1,37 @@
-﻿import React from 'react';
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import AdminPage from './pages/AdminPage';
-import Helium10Page from './pages/Helium10Page';
-import ExtensionPage from './pages/ExtensionPage';
-import SettingsPage from './pages/SettingsPage';
-import PlaceholderPage from './pages/PlaceholderPage';
-import AdminPage1 from './pages/AdminPage1';
-import JungleScoutPage from './pages/JungleScoutPage';
-import SidebarLayout from './components/SidebarLayout';
-import { useAuth, AuthProvider } from './auth';
-
-function PrivateRoute({ children, role }) {
-    const { user } = useAuth();
-    if (!user) return <Navigate to="/login" replace />;
-    if (role && user.role !== role) return <Navigate to="/" replace />;
-    return children;
-}
-
-function AppRoutes() {
-    const { loading } = useAuth();
-
-    if (loading) {
-        return (
-            <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                height: '100vh',
-                background: '#0d1117',
-                color: '#c9d1d9',
-                fontFamily: 'sans-serif'
-            }}>
-                <div style={{ textAlign: 'center' }}>
-                    <div className="loading-spinner" style={{
-                        border: '4px solid rgba(255,255,255,0.1)',
-                        borderTop: '4px solid #58a6ff',
-                        borderRadius: '50%',
-                        width: '40px',
-                        height: '40px',
-                        animation: 'spin 1s linear infinite',
-                        margin: '0 auto 20px'
-                    }}></div>
-                    <p>Initialising secure session...</p>
-                    <style>{`
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-          `}</style>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <Routes>
-            <Route
-                path="/"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <DashboardPage />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/admin"
-                element={
-                    <PrivateRoute role="admin">
-                        <SidebarLayout>
-                            <AdminPage />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/admin1"
-                element={
-                    <PrivateRoute role="admin">
-                        <SidebarLayout>
-                            <AdminPage1 />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/admin-1"
-                element={
-                    <PrivateRoute role="admin">
-                        <SidebarLayout>
-                            <AdminPage1 />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/transactions"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <PlaceholderPage title="Transaction History" />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/subscribe"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <PlaceholderPage title="Subscribe/Renew" />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/settings"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <SettingsPage />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/account-settings"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <SettingsPage />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/help"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <PlaceholderPage title="Help Desk" />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/faqs"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <PlaceholderPage title="FAQs" />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/helium10/:id"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <Helium10Page />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/junglescout/:id"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <JungleScoutPage />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route
-                path="/extension"
-                element={
-                    <PrivateRoute>
-                        <SidebarLayout>
-                            <ExtensionPage />
-                        </SidebarLayout>
-                    </PrivateRoute>
-                }
-            />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-    );
-}
+import React from 'react';
 
 export default function App() {
-    return (
-        <AuthProvider>
-            <AppRoutes />
-        </AuthProvider>
-    );
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '100vh',
+      backgroundColor: '#f8d7da',
+      color: '#721c24',
+      textAlign: 'center',
+      padding: '20px',
+      fontFamily: 'sans-serif'
+    }}>
+      <div style={{
+        maxWidth: '600px',
+        backgroundColor: '#fff',
+        padding: '30px',
+        borderRadius: '8px',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+      }}>
+        <h2 style={{ marginBottom: '20px', color: '#dc3545' }}>Service Discontinued</h2>
+        <p style={{ fontSize: '18px', lineHeight: '1.6', marginBottom: '20px' }}>
+          <strong>Note:-</strong> Hi mam/Sir Sorry to say Unfortunately our vendor will not provide service because of personal issue and we are in loss so service is stop now. Please understand and support us. 
+        </p>
+        <p style={{ fontSize: '18px', lineHeight: '1.6', marginBottom: '20px', fontWeight: 'bold' }}>
+          We kindly request you to please remove our installed extension from your device at your earliest convenience.
+        </p>
+        <p style={{ fontSize: '16px', lineHeight: '1.6' }}>
+          If you have any query please ask 🙏
+        </p>
+      </div>
+    </div>
+  );
 }
