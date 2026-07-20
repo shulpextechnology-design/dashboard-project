@@ -503,6 +503,8 @@ export default function AdminPage() {
                                                     u.email?.toLowerCase().includes(q) ||
                                                     u.mobile_number?.toLowerCase().includes(q);
                                                 if (!matchesSearch) return false;
+                                                // When searching, skip tab filter to show results across all tabs
+                                                if (q) return true;
                                                 const isExp = !u.access_expires_at || new Date(u.access_expires_at) < new Date();
                                                 if (activeTab === 'active') return !isExp;
                                                 if (activeTab === 'demo') return u.is_demo;
