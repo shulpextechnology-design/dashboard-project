@@ -586,15 +586,15 @@ app.delete('/api/admin/users/:id', authMiddleware, adminOnly, async (req, res) =
   }
 });
 
-// Admin Reset Session
+// Admin Reset Session — clears ALL lock-related fields so the user can log in fresh
 app.post('/api/admin/users/:id/reset-session', authMiddleware, adminOnly, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await db.execute({
-      sql: `UPDATE users SET is_logged_in = 0 WHERE id = ?`,
+      sql: `UPDATE users SET is_logged_in = 0, last_ip = NULL, browser_id = NULL, current_session_id = NULL WHERE id = ?`,
       args: [id]
     });
-    res.json({ message: 'User session reset successfully', changes: result.rowsAffected });
+    res.json({ message: 'User session unlocked successfully', changes: result.rowsAffected });
   } catch (err) {
     console.error('DB error resetting session:', err);
     res.status(500).json({ message: 'DB error' });

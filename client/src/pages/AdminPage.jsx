@@ -22,7 +22,8 @@ import {
     RefreshCw,
     Phone,
     Check,
-    X
+    X,
+    Search
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -46,6 +47,7 @@ export default function AdminPage() {
     const [lastUploaded, setLastUploaded] = useState(null);
     const [syncSecret, setSyncSecret] = useState('');
     const [activeTab, setActiveTab] = useState('active'); // 'active', 'expired', 'today', or 'demo'
+    const [searchQuery, setSearchQuery] = useState('');
     const [syncStatus, setSyncStatus] = useState({ message: 'Loading...', lastSuccess: null, lastError: null, isSyncing: false });
     const [syncConfig, setSyncConfig] = useState({
         source_url: '',
@@ -453,12 +455,33 @@ export default function AdminPage() {
                             </section>
 
                             <section className="admin-card-v2 full-width-v2">
-                                <div className="card-header-v2" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <div className="card-header-v2" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Users size={20} /> <h2>Database</h2></div>
-                                    <div className="admin-tabs-v2">
-                                        {['active', 'expired', 'today', 'demo'].map(t => (
-                                            <button key={t} className={`admin-tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t.toUpperCase()}</button>
-                                        ))}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                        <div style={{ position: 'relative' }}>
+                                            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#666' }} />
+                                            <input
+                                                type="text"
+                                                placeholder="Search email or mobile..."
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                style={{
+                                                    padding: '6px 10px 6px 30px',
+                                                    borderRadius: '6px',
+                                                    border: '1px solid #444',
+                                                    background: '#1a1a1a',
+                                                    color: '#fff',
+                                                    fontSize: '13px',
+                                                    width: '220px',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="admin-tabs-v2">
+                                            {['active', 'expired', 'today', 'demo'].map(t => (
+                                                <button key={t} className={`admin-tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t.toUpperCase()}</button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="table-responsive-v2">
@@ -468,11 +491,18 @@ export default function AdminPage() {
                                                 <th>USER</th>
                                                 <th>Expiry Access</th>
                                                 <th>Status</th>
+                                                <th>Locked IP</th>
                                                 <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {users.filter(u => {
+                                                const q = searchQuery.toLowerCase().trim();
+                                                const matchesSearch = !q ||
+                                                    u.username?.toLowerCase().includes(q) ||
+                                                    u.email?.toLowerCase().includes(q) ||
+                                                    u.mobile_number?.toLowerCase().includes(q);
+                                                if (!matchesSearch) return false;
                                                 const isExp = !u.access_expires_at || new Date(u.access_expires_at) < new Date();
                                                 if (activeTab === 'active') return !isExp;
                                                 if (activeTab === 'demo') return u.is_demo;
@@ -519,9 +549,14 @@ export default function AdminPage() {
                                                             {u.is_logged_in ? 'On' : 'Off'}
                                                         </span>
                                                     </td>
+                                                    <td>
+                                                        <code style={{ fontSize: '12px', color: u.last_ip ? '#f59e0b' : '#666' }}>
+                                                            {u.last_ip || 'N/A'}
+                                                        </code>
+                                                    </td>
                                                     <td className="action-cell-v2">
                                                         <button className="mgmt-btn" onClick={() => updateAccess(u.id, 1)} title="Add 1 Month">+1m</button>
-                                                        <button className="mgmt-btn-reset" onClick={() => resetSession(u.id)} title="Reset Session">Reset</button>
+                                                        <button className="mgmt-btn-reset" onClick={() => resetSession(u.id)} title="Unlock IP (clear session lock)">Unlock IP</button>
                                                         <button className="mgmt-btn-del" onClick={() => removeUser(u.id)} title="Delete User">
                                                             <Trash2 size={14} />
                                                         </button>
@@ -529,6 +564,23 @@ export default function AdminPage() {
                                                 </tr>
                                             ))}
                                         </tbody>
+                                        {(() => {
+                                            const q = searchQuery.toLowerCase().trim();
+                                            if (!q) return null;
+                                            const count = users.filter(u =>
+                                                u.username?.toLowerCase().includes(q) ||
+                                                u.email?.toLowerCase().includes(q) ||
+                                                u.mobile_number?.toLowerCase().includes(q)
+                                            ).length;
+                                            if (count === 0) {
+                                                return (
+                                                    <tbody>
+                                                        <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No users found matching "{searchQuery}"</td></tr>
+                                                    </tbody>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                     </table>
                                 </div>
                             </section>
