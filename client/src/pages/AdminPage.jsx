@@ -23,7 +23,8 @@ import {
     Phone,
     Check,
     X,
-    Search
+    Search,
+    Copy
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -63,6 +64,9 @@ export default function AdminPage() {
     const [jsCredentials, setJsCredentials] = useState({ login_id: '', password: '' });
     const [jsSaving, setJsSaving] = useState(false);
     const [syncLogs, setSyncLogs] = useState([]);
+    const [showCredsPopup, setShowCredsPopup] = useState(false);
+    const [newCreds, setNewCreds] = useState({ username: '', password: '' });
+    const [copied, setCopied] = useState('');
 
     const loadUsers = async () => {
         try {
@@ -194,6 +198,9 @@ export default function AdminPage() {
                 is_demo: form.is_demo,
                 expiresAt: form.expiresAt || undefined
             });
+            // Store credentials for the popup before clearing form
+            setNewCreds({ username: form.username, password: form.password });
+            setShowCredsPopup(true);
             setForm({ email: '', username: '', password: '', mobile_number: '', months: 1, is_demo: false, expiresAt: '' });
             loadUsers();
         } catch (e) {
@@ -667,5 +674,95 @@ export default function AdminPage() {
                 </div>
             </div>
         </div>
+
+        {/* Credentials Popup — for WhatsApp sharing */}
+        {showCredsPopup && (
+            <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(0,0,0,0.7)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', zIndex: 9999
+            }}>
+                <div style={{
+                    background: '#1a1f2e', borderRadius: 16, padding: '32px',
+                    maxWidth: 440, width: '90%', textAlign: 'center',
+                    border: '1px solid #2d3548', boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+                }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
+                    <h3 style={{ color: '#10b981', margin: '0 0 4px', fontSize: 22 }}>User Created Successfully!</h3>
+                    <p style={{ color: '#94a3b8', margin: '0 0 20px', fontSize: 14 }}>Share these credentials with the user on WhatsApp</p>
+
+                    <div style={{ textAlign: 'left', background: '#0f172a', borderRadius: 12, padding: '20px', marginBottom: 20 }}>
+                        <div style={{ color: '#e2e8f0', marginBottom: 14, fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+                            🎉 *Welcome to Bharat Tools Hub!*
+
+Dear User 💫
+
+Your login credentials are below:
+
+👤 *Username:* `{newCreds.username}`
+🔑 *Password:* `{newCreds.password}`
+
+🌐 *Login Here:*
+https://bharattoolshub.shop/
+
+💻 *Recommended Browser:*
+Please use *Microsoft Edge* for the best experience.
+
+🎥 *Setup & Login Video Tutorial:*
+https://youtu.be/2frQiV1mXAs?si=ZRzNp4QllmgJQvhv
+
+💖 *Thank you for choosing Bharat Tools Hub!*
+
+🕒 *Support Available:* 24×7
+✅ *Your satisfaction is our top priority.*
+
+If you face any issues while logging in, feel free to contact us. We're always happy to help!
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                const text = `🎉 *Welcome to Bharat Tools Hub!*\n\nDear User 💫\n\nYour login credentials are below:\n\n👤 *Username:* \`${newCreds.username}\`\n🔑 *Password:* \`${newCreds.password}\`\n\n🌐 *Login Here:*\nhttps://bharattoolshub.shop/\n\n💻 *Recommended Browser:*\nPlease use *Microsoft Edge* for the best experience.\n\n🎥 *Setup & Login Video Tutorial:*\nhttps://youtu.be/2frQiV1mXAs?si=ZRzNp4QllmgJQvhv\n\n💖 *Thank you for choosing Bharat Tools Hub!*\n\n🕒 *Support Available:* 24×7\n✅ *Your satisfaction is our top priority.*\n\nIf you face any issues while logging in, feel free to contact us. We're always happy to help!`;
+                                navigator.clipboard.writeText(text).then(() => {
+                                    setCopied('copied');
+                                    setTimeout(() => setCopied(''), 2000);
+                                }).catch(() => {
+                                    // fallback
+                                    const ta = document.createElement('textarea');
+                                    ta.value = text;
+                                    document.body.appendChild(ta);
+                                    ta.select();
+                                    document.execCommand('copy');
+                                    document.body.removeChild(ta);
+                                    setCopied('copied');
+                                    setTimeout(() => setCopied(''), 2000);
+                                });
+                            }}
+                            style={{
+                                width: '100%', padding: '12px 20px', borderRadius: 10,
+                                background: copied ? '#059669' : '#3b82f6',
+                                color: '#fff', border: 'none', cursor: 'pointer',
+                                fontSize: 15, fontWeight: 600,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                transition: 'background 0.2s'
+                            }}
+                        >
+                            <Copy size={18} />
+                            {copied ? 'Copied to Clipboard!' : 'Copy for WhatsApp'}
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={() => { setShowCredsPopup(false); setCopied(''); }}
+                        style={{
+                            background: 'transparent', border: '1px solid #374151',
+                            color: '#9ca3af', padding: '8px 24px', borderRadius: 8,
+                            cursor: 'pointer', fontSize: 14
+                        }}
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        )}
     );
 }
