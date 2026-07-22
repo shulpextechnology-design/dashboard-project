@@ -3340,3 +3340,259 @@ input:focus {
  } 
   
  
+/* ============================================
+   MOBILE RESPONSIVE — added for small screens
+   ============================================ */
+
+@media (max-width: 900px) {
+  /* Admin sidebar becomes a top horizontal bar */
+  .admin-page-v2.unified-dashboard-v2 {
+    flex-direction: column !important;
+  }
+
+  .admin-sidebar-v2 {
+    width: 100% !important;
+    position: relative !important;
+    height: auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding: 12px !important;
+  }
+
+  .sidebar-header-v2 h3 {
+    font-size: 16px !important;
+  }
+
+  .admin-sub-nav {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 6px !important;
+    padding: 4px 0 !important;
+    scrollbar-width: none !important;
+  }
+
+  .admin-sub-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item-v2 {
+    flex-shrink: 0 !important;
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+  }
+
+  .admin-main-content-v2 {
+    padding: 12px !important;
+    width: 100% !important;
+  }
+
+  .admin-view-container-v2 {
+    padding: 0 !important;
+  }
+
+  /* Stats grid */
+  .admin-v1-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* Tables become scrollable cards */
+  .table-responsive-v2 {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    margin: 0 -12px !important;
+    padding: 0 12px !important;
+  }
+
+  .admin-table-v2 {
+    min-width: 600px !important;
+    font-size: 13px !important;
+  }
+
+  .admin-table-v2 th,
+  .admin-table-v2 td {
+    padding: 10px 8px !important;
+    white-space: nowrap !important;
+  }
+
+  .action-cell-v2 {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+  }
+
+  .mgmt-btn, .mgmt-btn-reset, .mgmt-btn-del {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Forms stack */
+  .form-row-v2 {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .admin-form-v2 {
+    padding: 14px !important;
+  }
+
+  .admin-form-v2 input,
+  .admin-form-v2 textarea {
+    font-size: 14px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Admin cards */
+  .admin-card-v2 {
+    margin-bottom: 12px !important;
+  }
+
+  /* Header */
+  .admin-header-v2,
+  .header-info-v2 h1 {
+    font-size: 18px !important;
+  }
+
+  /* Tabs */
+  .admin-tabs-v2 {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .admin-tab-btn {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Single column stats */
+  .admin-v1-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .stat-card-v1 {
+    padding: 14px !important;
+  }
+
+  .stat-icon-v1 {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 16px !important;
+  }
+
+  .stat-value-v1 {
+    font-size: 20px !important;
+  }
+
+  /* Table gets wider min-width for readability */
+  .table-responsive-v2 {
+    margin: 0 -8px !important;
+    padding: 0 8px !important;
+  }
+
+  .admin-table-v2 {
+    min-width: 560px !important;
+  }
+
+  /* Search input */
+  .admin-header-v2 {
+    flex-direction: column !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  /* Action buttons smaller */
+  .mgmt-btn, .mgmt-btn-reset, .mgmt-btn-del {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    border-radius: 4px !important;
+  }
+
+  /* Instance selector */
+  .instance-selector-v2 {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .instance-selector-v2 button {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+  }
+
+  /* Quick actions grid */
+  .quick-actions-grid-v2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Card headers */
+  .card-header-v2 {
+    font-size: 15px !important;
+    padding: 14px !important;
+  }
+}
+
+/* Login page responsive */
+@media (max-width: 768px) {
+  .premium-login-page {
+    flex-direction: column !important;
+  }
+
+  .login-visual-side {
+    display: none !important;
+  }
+
+  .login-form-side {
+    width: 100% !important;
+    padding: 20px 16px !important;
+  }
+
+  .login-form-card {
+    padding: 24px 20px !important;
+    border-radius: 12px !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .login-form-card {
+    padding: 18px 14px !important;
+  }
+
+  .login-form-card h2 {
+    font-size: 20px !important;
+  }
+}
+
+/* Credentials popup responsive */
+.creds-popup-inner h3 {
+  font-size: 20px;
+}
+
+.creds-popup-inner textarea {
+  font-size: 13px;
+  min-height: 260px;
+}
+
+@media (max-width: 480px) {
+  .creds-popup-inner {
+    margin: 8px !important;
+    padding: 18px 12px !important;
+    border-radius: 12px !important;
+  }
+
+  .creds-popup-inner h3 {
+    font-size: 17px !important;
+  }
+
+  .creds-popup-inner p {
+    font-size: 12px !important;
+  }
+
+  .creds-popup-inner textarea {
+    min-height: 220px !important;
+    font-size: 11px !important;
+    padding: 10px !important;
+  }
+}

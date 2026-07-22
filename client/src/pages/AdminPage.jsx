@@ -675,7 +675,7 @@ export default function AdminPage() {
 
                 {showCredsPopup && (
                     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                        <div style={{ background: '#1a1f2e', borderRadius: 16, padding: '32px', maxWidth: 440, width: '90%', textAlign: 'center', border: '1px solid #2d3548', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+                        <div className="creds-popup-inner" style={{ background: '#1a1f2e', borderRadius: 16, padding: '32px', maxWidth: 440, width: '90%', textAlign: 'center', border: '1px solid #2d3548', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
                             <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
                             <h3 style={{ color: '#10b981', margin: '0 0 4px', fontSize: 22 }}>User Created Successfully!</h3>
                             <p style={{ color: '#94a3b8', margin: '0 0 20px', fontSize: 14 }}>Copy the message below and send to the user on WhatsApp</p>
