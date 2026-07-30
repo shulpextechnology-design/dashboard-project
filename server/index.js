@@ -511,6 +511,10 @@ app.post('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
     const d = new Date();
     d.setMonth(d.getMonth() + months);
     access_expires_at = d.toISOString();
+  } else {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    access_expires_at = d.toISOString();
   }
 
   try {
@@ -871,13 +875,21 @@ app.get('/api/admin/extension-meta', authMiddleware, adminOnly, async (req, res)
 });
 
 // --- User: fetch Helium 10 session for extension ---
+function sanitizeSessionJson(raw) {
+  let s = String(raw || '').trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s.replace(/\\"/g, '"').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
+}
+
 app.get('/api/helium10-session', authMiddleware, async (req, res) => {
   const id = 1;
   try {
     const result = await db.execute({ sql: `SELECT session_json, updated_at FROM helium10_session WHERE id = ?`, args: [id] });
     const row = result.rows[0];
     if (!row) return res.status(404).json({ message: `Helium 10 session not configured` });
-    res.json({ sessionData: row.session_json, updatedAt: row.updated_at, id });
+    res.json({ sessionData: sanitizeSessionJson(row.session_json), updatedAt: row.updated_at, id });
   } catch (err) { res.status(500).json({ message: 'DB error' }); }
 });
 
@@ -893,7 +905,7 @@ app.get('/api/helium10-session/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: `Helium 10 session ${id} not configured by admin` });
     }
     res.json({
-      sessionData: row.session_json,
+      sessionData: sanitizeSessionJson(row.session_json),
       updatedAt: row.updated_at,
       id
     });

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -51,18 +51,15 @@ export default function Helium10Page() {
         const textArea = document.createElement('textarea');
         textArea.value = text;
         textArea.style.position = 'fixed';
-        textArea.style.top = '0';
-        textArea.style.left = '0';
-        textArea.style.width = '2em';
-        textArea.style.height = '2em';
-        textArea.style.padding = '0';
-        textArea.style.border = 'none';
-        textArea.style.outline = 'none';
-        textArea.style.boxShadow = 'none';
-        textArea.style.background = 'transparent';
+        textArea.style.top = '-9999px';
+        textArea.style.left = '-9999px';
+        textArea.setAttribute('readonly', '');
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
+        if (textArea.setSelectionRange) {
+            textArea.setSelectionRange(0, 999999);
+        }
 
         let success = false;
         try {
@@ -83,7 +80,14 @@ export default function Helium10Page() {
                 return;
             }
 
-            const rawData = (sessionData.sessionData || '').trim();
+            let rawData = String(sessionData.sessionData || '').trim();
+            // Remove wrapping double or single quotes if present
+            if ((rawData.startsWith('"') && rawData.endsWith('"')) || (rawData.startsWith("'") && rawData.endsWith("'"))) {
+                rawData = rawData.slice(1, -1).trim();
+            }
+            // Replace escaped quotes or html entities if present
+            rawData = rawData.replace(/\\"/g, '"').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
+
             if (!rawData) {
                 setCopyStatus('failed');
                 alert('Helium 10 session data is empty. Please contact support.');
@@ -91,9 +95,14 @@ export default function Helium10Page() {
             }
 
             let finalToken = '';
-            if (rawData.startsWith(OMNIBOX_KEYWORD)) {
-                const contentAfterKeyword = rawData.substring(OMNIBOX_KEYWORD.length).trim();
-                finalToken = OMNIBOX_KEYWORD + ' ' + contentAfterKeyword;
+
+            // Check if rawData already contains the OMNIBOX_KEYWORD anywhere
+            const keywordIndex = rawData.indexOf(OMNIBOX_KEYWORD);
+            if (keywordIndex !== -1) {
+                // Extract everything starting after OMNIBOX_KEYWORD
+                const payloadPart = rawData.substring(keywordIndex + OMNIBOX_KEYWORD.length).trim();
+                const cleanPayload = payloadPart.replace(/\s+/g, '').replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '');
+                finalToken = OMNIBOX_KEYWORD + ' ' + cleanPayload;
             } else {
                 try {
                     const cookiesObj = JSON.parse(rawData);
@@ -107,17 +116,12 @@ export default function Helium10Page() {
                     const encrypted = window.CryptoJS.AES.encrypt(JSON.stringify(cookiesObj), AES_KEY).toString();
                     finalToken = OMNIBOX_KEYWORD + ' ' + encrypted;
                 } catch (e) {
-                    finalToken = OMNIBOX_KEYWORD + ' ' + rawData;
+                    const cleanPayload = rawData.replace(/\s+/g, '');
+                    finalToken = OMNIBOX_KEYWORD + ' ' + cleanPayload;
                 }
             }
 
             finalToken = finalToken.trim();
-            const parts = finalToken.split(' ');
-            if (parts.length >= 2 && finalToken.startsWith(OMNIBOX_KEYWORD)) {
-                const keyword = parts[0];
-                const payload = parts.slice(1).join('').replace(/\s/g, '');
-                finalToken = keyword + ' ' + payload;
-            }
 
             let copySuccess = false;
             if (navigator.clipboard?.writeText) {
