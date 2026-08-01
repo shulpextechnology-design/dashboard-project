@@ -1017,18 +1017,20 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
-  const jar = new CookieJar();
-  const client = wrapper(axios.create({
-    jar,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9'
-    }
-  }));
-
   async function performSync(instanceId = 1) {
     const id = Number(instanceId);
+
+    // Create fresh CookieJar & client per performSync run to prevent session pollution across instances
+    const jar = new CookieJar();
+    const client = wrapper(axios.create({
+      jar,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    }));
+
     try {
       // LOG ATTEMPT
       await dbExecuteWithRetry({
@@ -1095,8 +1097,13 @@ async function startBackgroundSync() {
         console.warn(`[BackgroundSync] Instance ${id} Initial check timed out or failed: ${err.message}. Proceeding to login.`);
         contentPageRes = { data: '' }; // Force login flow
       }
-      let tokenMatch = contentPageRes.data.match(/var copyText = ["'](brandseotools.*?)["']/);
+      let tokenMatch = contentPageRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
       let token = tokenMatch ? tokenMatch[1] : null;
+
+      if (!token) {
+        const altMatch = contentPageRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
+        token = altMatch ? altMatch[0] : null;
+      }
 
       if (!token) {
         console.log(`[BackgroundSync] Instance ${id} Session expired. Performing full login flow...`);
