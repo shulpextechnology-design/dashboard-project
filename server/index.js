@@ -1092,7 +1092,7 @@ async function startBackgroundSync() {
       console.log(`[BackgroundSync] Instance ${id} Step A: Checking session reuse at ${source_url}...`);
       let contentPageRes;
       try {
-        contentPageRes = await client.get(source_url, { timeout: 20000, responseType: 'text' });
+        contentPageRes = await client.get(source_url, { timeout: 30000, responseType: 'text' });
       } catch (err) {
         console.warn(`[BackgroundSync] Instance ${id} Initial check timed out or failed: ${err.message}. Proceeding to login.`);
         contentPageRes = { data: '' }; // Force login flow
@@ -1107,7 +1107,7 @@ async function startBackgroundSync() {
 
       if (!token) {
         console.log(`[BackgroundSync] Instance ${id} Session expired. Performing full login flow...`);
-        const loginPageRes = await client.get(login_url, { timeout: 10000, responseType: 'text' });
+        const loginPageRes = await client.get(login_url, { timeout: 30000, responseType: 'text' });
         const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
         const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
@@ -1125,7 +1125,7 @@ async function startBackgroundSync() {
             'Referer': login_url
           },
           maxRedirects: 5,
-          timeout: 20000,
+          timeout: 30000,
           validateStatus: false // handle errors manually for better logging
         });
 
@@ -1143,7 +1143,7 @@ async function startBackgroundSync() {
 
         // --- Session Verification Step ---
         console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at /member...`);
-        const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 20000 });
+        const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 30000 });
         const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
         const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
 
@@ -1164,7 +1164,7 @@ async function startBackgroundSync() {
         console.log(`[BackgroundSync] Instance ${id} Step D: Fetching content with active session: ${source_url}`);
         contentPageRes = await client.get(source_url, {
           headers: { 'Referer': 'https://members.freelancerservice.site/member' },
-          timeout: 20000,
+          timeout: 30000,
           responseType: 'text'
         });
 
