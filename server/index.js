@@ -66,7 +66,8 @@ async function initDb() {
         last_success TEXT,
         last_error TEXT,
         message TEXT,
-        is_syncing INTEGER DEFAULT 0
+        is_syncing INTEGER DEFAULT 0,
+        fail_count INTEGER DEFAULT 0
       )
     `);
 
@@ -75,6 +76,7 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS sync_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+        instance_id INTEGER NOT NULL DEFAULT 0,
         event TEXT NOT NULL,
         details TEXT
       )
@@ -750,14 +752,12 @@ app.get('/api/admin/sync-config/:id', authMiddleware, adminOnly, async (req, res
 });
 
 app.get('/api/admin/sync-logs/:id', authMiddleware, adminOnly, async (req, res) => {
-  const id = Number(req.params.id);
+  const instanceId = Number(req.params.id);
   try {
     const result = await db.execute({
-      sql: 'SELECT id, event, details, created_at FROM sync_logs WHERE id >= 0 ORDER BY created_at DESC LIMIT 50',
-      args: []
+      sql: 'SELECT id, instance_id, event, details, created_at FROM sync_logs WHERE instance_id = ? ORDER BY created_at DESC LIMIT 50',
+      args: [instanceId]
     });
-    // Filter by instance if details contain the ID, or just return all for now since sync_logs doesn't have an instance_id column yet.
-    // Let's actually add the instance_id column to sync_logs to be proper.
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ message: 'DB error fetching logs' });
@@ -1017,6 +1017,13 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
+  async function logSync(instanceId, event, details) {
+    await dbExecuteWithRetry({
+      sql: 'INSERT INTO sync_logs (instance_id, event, details) VALUES (?, ?, ?)',
+      args: [instanceId, event, details]
+    });
+  }
+
   async function performSync(instanceId = 1) {
     const id = Number(instanceId);
 
@@ -1033,10 +1040,7 @@ async function startBackgroundSync() {
 
     try {
       // LOG ATTEMPT
-      await dbExecuteWithRetry({
-        sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Attempt', `Starting background sync cycle for instance ${id}`]
-      });
+      await logSync(id, 'Attempt', `Starting background sync cycle for instance ${id}`);
 
       // Check if already syncing + Stale worker protection (if stuck for >15 mins)
       const statusCheck = await dbExecuteWithRetry({
@@ -1050,17 +1054,27 @@ async function startBackgroundSync() {
         const nowTime = Date.now();
         if (nowTime - lastUpdate > 15 * 60 * 1000) {
           console.warn(`[BackgroundSync] Worker ${id} seems stale. Forcing reset.`);
-          await dbExecuteWithRetry({
-            sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-            args: ['Recovery', `Forcing reset of stale is_syncing flag for instance ${id}`]
-          });
+          await logSync(id, 'Recovery', `Forcing reset of stale is_syncing flag for instance ${id}`);
         } else {
-          await dbExecuteWithRetry({
-            sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-            args: ['Skip', `Instance ${id} already syncing (active)`]
-          });
+          await logSync(id, 'Skip', `Instance ${id} already syncing (active)`);
           return;
         }
+      }
+
+      // Check if this instance has exceeded consecutive failure threshold — auto-recover
+      const failCheck = await dbExecuteWithRetry({
+        sql: 'SELECT fail_count FROM sync_status WHERE id = ?',
+        args: [id]
+      });
+      const failCount = failCheck.rows[0]?.fail_count || 0;
+      if (failCount >= 3) {
+        console.warn(`[BackgroundSync] Instance ${id} has failed ${failCount} times. Auto-recovering...`);
+        await dbExecuteWithRetry({
+          sql: 'UPDATE sync_status SET is_syncing = 0, fail_count = 0, message = ? WHERE id = ?',
+          args: [`Auto-recovery after ${failCount} failures`, id]
+        });
+        await logSync(id, 'Recovery', `Auto-reset is_syncing flag after ${failCount} consecutive failures`);
+        // Don't return — proceed with the sync attempt
       }
 
       // Set syncing state
@@ -1150,10 +1164,7 @@ async function startBackgroundSync() {
         console.log(`[BackgroundSync] Instance ${id} Step C: Session active at /member: ${isLogged}`);
 
         // Log this state to DB for remote debugging
-        await dbExecuteWithRetry({
-          sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-          args: ['Diagnostic', `Instance ${id} Session @ /member: ${isLogged}, Title: ${pageTitle}`]
-        });
+        await logSync(id, 'Diagnostic', `Instance ${id} Session @ /member: ${isLogged}, Title: ${pageTitle}`);
 
         if (!isLogged) {
           console.error(`[BackgroundSync] Instance ${id} Login appeared successful but session is missing at /member.`);
@@ -1200,14 +1211,11 @@ async function startBackgroundSync() {
       });
 
       await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0 WHERE id = ?',
+        sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0, fail_count = 0 WHERE id = ?',
         args: [now, 'Success', id]
       });
 
-      await dbExecuteWithRetry({
-        sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Success', `Instance ${id} Synced at ${new Date().toLocaleString()}`]
-      });
+      await logSync(id, 'Success', `Instance ${id} Synced at ${new Date().toLocaleString()}`);
 
       console.log(`[BackgroundSync] ✅ Successfully synced token for Instance ${id}`);
     } catch (err) {
@@ -1219,14 +1227,11 @@ async function startBackgroundSync() {
       }
 
       await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0 WHERE id = ?',
+        sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0, fail_count = COALESCE(fail_count, 0) + 1 WHERE id = ?',
         args: [err.message, 'Error: ' + err.message, id]
       }).catch(e => console.error(`[Fatal] Could not update sync_status for ${id} with error:`, e.message));
 
-      await dbExecuteWithRetry({
-        sql: 'INSERT INTO sync_logs (event, details) VALUES (?, ?)',
-        args: ['Error', `Instance ${id}: ${err.message} (${err.config?.url || 'Unknown URL'})`]
-      }).catch(() => { });
+      await logSync(id, 'Error', `Instance ${id}: ${err.message} (${err.config?.url || 'Unknown URL'})`).catch(() => {});
     } finally {
       // Ensure syncing flag is reset even on fatal database blowups if possible
       try {
@@ -1243,12 +1248,12 @@ async function startBackgroundSync() {
     setTimeout(() => performSync(2), 30000); // Stagger them on startup
   }, 5000);
 
-  // Schedule every 5 minutes
-  console.log('[BackgroundSync] Worker scheduled for every 5 minutes');
+  // Schedule every 10 minutes
+  console.log('[BackgroundSync] Workers scheduled for every 10 minutes');
   setInterval(() => {
     performSync(1);
     setTimeout(() => performSync(2), 2.5 * 60 * 1000); // Offset instance 2 by 2.5 mins
-  }, 5 * 60 * 1000);
+  }, 10 * 60 * 1000);
 }
 
 // --- Keep-Alive Pinger ---
