@@ -694,6 +694,21 @@ app.post('/api/admin/users/:id/reset-session', authMiddleware, adminOnly, async 
   }
 });
 
+// Admin: fetch sync logs for instance
+app.get('/api/admin/sync-logs/:id', authMiddleware, adminOnly, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM sync_logs WHERE instance_id = ? ORDER BY id DESC LIMIT 50`,
+      args: [id]
+    });
+    res.json(result.rows);
+  } catch (err) {
+    console.error('DB error fetching sync logs:', err);
+    res.status(500).json({ message: 'DB error' });
+  }
+});
+
 // --- Admin: manage Helium 10 session/cookies ---
 app.get('/api/admin/helium10-session', authMiddleware, adminOnly, async (req, res) => {
   const id = 1;
