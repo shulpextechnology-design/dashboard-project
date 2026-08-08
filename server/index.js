@@ -501,42 +501,129 @@ app.post('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
     return res.status(400).json({ message: 'Missing fields' });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanUsername = username.trim();
   const hash = bcrypt.hashSync(password, 10);
-  let access_expires_at = null;
-  if (expiresAt) {
-    const d = new Date(expiresAt);
-    if (Number.isNaN(d.getTime())) {
-      return res.status(400).json({ message: 'Invalid expiresAt date' });
-    }
-    access_expires_at = d.toISOString();
-  } else if (months && months > 0) {
-    const d = new Date();
-    d.setMonth(d.getMonth() + months);
-    access_expires_at = d.toISOString();
-  } else {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 1);
-    access_expires_at = d.toISOString();
-  }
 
   try {
+    // 1. Check if user already exists with this email
+    const existingUserRes = await db.execute({
+      sql: `SELECT * FROM users WHERE LOWER(email) = ?`,
+      args: [cleanEmail]
+    });
+    const existingUser = existingUserRes.rows[0];
+
+    if (existingUser) {
+      // Check if username is used by a DIFFERENT user
+      const checkUsernameRes = await db.execute({
+        sql: `SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND LOWER(email) != ?`,
+        args: [cleanUsername, cleanEmail]
+      });
+      if (checkUsernameRes.rows.length > 0) {
+        return res.status(400).json({ message: 'Username is already in use by another user' });
+      }
+
+      // Calculate new access expiration date for existing user
+      let access_expires_at = null;
+      if (expiresAt) {
+        const d = new Date(expiresAt);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ message: 'Invalid expiresAt date' });
+        }
+        access_expires_at = d.toISOString();
+      } else if (months && months > 0) {
+        let baseDate = new Date();
+        if (existingUser.access_expires_at) {
+          const currentExp = new Date(existingUser.access_expires_at);
+          if (!Number.isNaN(currentExp.getTime()) && currentExp > baseDate) {
+            baseDate = currentExp;
+          }
+        }
+        baseDate.setMonth(baseDate.getMonth() + Number(months));
+        access_expires_at = baseDate.toISOString();
+      } else {
+        let baseDate = new Date();
+        if (existingUser.access_expires_at) {
+          const currentExp = new Date(existingUser.access_expires_at);
+          if (!Number.isNaN(currentExp.getTime()) && currentExp > baseDate) {
+            baseDate = currentExp;
+          }
+        }
+        baseDate.setMonth(baseDate.getMonth() + 1);
+        access_expires_at = baseDate.toISOString();
+      }
+
+      // Update existing user record with new username/ID, password hash, expiration, mobile number, demo status, and reset session lock
+      await db.execute({
+        sql: `UPDATE users 
+              SET username = ?, 
+                  password_hash = ?, 
+                  access_expires_at = ?, 
+                  mobile_number = ?, 
+                  is_demo = ?,
+                  is_logged_in = 0,
+                  last_ip = NULL,
+                  browser_id = NULL,
+                  current_session_id = NULL
+              WHERE id = ?`,
+        args: [
+          cleanUsername,
+          hash,
+          access_expires_at,
+          mobile_number !== undefined ? (mobile_number || null) : existingUser.mobile_number,
+          is_demo ? 1 : 0,
+          existingUser.id
+        ]
+      });
+
+      return res.status(200).json({ 
+        id: existingUser.id.toString(), 
+        updated: true, 
+        message: 'User updated successfully' 
+      });
+    }
+
+    // 2. If user does NOT exist, check if username is taken by any existing user
+    const checkUsernameRes = await db.execute({
+      sql: `SELECT id FROM users WHERE LOWER(username) = LOWER(?)`,
+      args: [cleanUsername]
+    });
+    if (checkUsernameRes.rows.length > 0) {
+      return res.status(400).json({ message: 'Username already exists' });
+    }
+
+    // Calculate access_expires_at for new user
+    let access_expires_at = null;
+    if (expiresAt) {
+      const d = new Date(expiresAt);
+      if (Number.isNaN(d.getTime())) {
+        return res.status(400).json({ message: 'Invalid expiresAt date' });
+      }
+      access_expires_at = d.toISOString();
+    } else if (months && months > 0) {
+      const d = new Date();
+      d.setMonth(d.getMonth() + Number(months));
+      access_expires_at = d.toISOString();
+    } else {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      access_expires_at = d.toISOString();
+    }
+
     const result = await db.execute({
       sql: `INSERT INTO users (email, username, password_hash, role, access_expires_at, mobile_number, is_demo)
             VALUES (?, ?, ?, 'user', ?, ?, ?)`,
-      args: [email, username, hash, access_expires_at, mobile_number || null, is_demo ? 1 : 0]
+      args: [cleanEmail, cleanUsername, hash, access_expires_at, mobile_number || null, is_demo ? 1 : 0]
     });
-    res.status(201).json({ id: result.lastInsertRowid ? result.lastInsertRowid.toString() : null });
+
+    return res.status(201).json({ 
+      id: result.lastInsertRowid ? result.lastInsertRowid.toString() : null,
+      updated: false,
+      message: 'User created successfully'
+    });
+
   } catch (err) {
-    const errMsg = err.message.toLowerCase();
-    if (errMsg.includes('unique constraint') || errMsg.includes('unique')) {
-      if (errMsg.includes('email')) {
-        return res.status(400).json({ message: 'Email already exists' });
-      } else if (errMsg.includes('username')) {
-        return res.status(400).json({ message: 'Username already exists' });
-      }
-      return res.status(400).json({ message: 'Email or username already exists' });
-    }
-    console.error('Database error creating user:', err);
+    console.error('Database error in create/update user:', err);
     return res.status(500).json({ message: 'Database error: ' + (err.message || 'Unknown error') });
   }
 });

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import {
@@ -66,6 +66,7 @@ export default function AdminPage() {
     const [syncLogs, setSyncLogs] = useState([]);
     const [showCredsPopup, setShowCredsPopup] = useState(false);
     const [newCreds, setNewCreds] = useState({ username: '', password: '' });
+    const [isUpdatedUser, setIsUpdatedUser] = useState(false);
     const [copied, setCopied] = useState('');
 
     const loadUsers = async () => {
@@ -189,7 +190,7 @@ export default function AdminPage() {
         setLoading(true);
         setError('');
         try {
-            await axios.post('/api/admin/users', {
+            const res = await axios.post('/api/admin/users', {
                 email: form.email,
                 username: form.username,
                 password: form.password,
@@ -198,13 +199,14 @@ export default function AdminPage() {
                 is_demo: form.is_demo,
                 expiresAt: form.expiresAt || undefined
             });
+            setIsUpdatedUser(!!res.data?.updated);
             // Store credentials for the popup before clearing form
             setNewCreds({ username: form.username, password: form.password });
             setShowCredsPopup(true);
             setForm({ email: '', username: '', password: '', mobile_number: '', months: 1, is_demo: false, expiresAt: '' });
             loadUsers();
         } catch (e) {
-            setError(e.response?.data?.message || 'Failed to create user');
+            setError(e.response?.data?.message || 'Failed to save user');
         } finally {
             setLoading(false);
         }
@@ -677,7 +679,7 @@ export default function AdminPage() {
                     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
                         <div className="creds-popup-inner" style={{ background: '#1a1f2e', borderRadius: 16, padding: '32px', maxWidth: 440, width: '90%', textAlign: 'center', border: '1px solid #2d3548', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
                             <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
-                            <h3 style={{ color: '#10b981', margin: '0 0 4px', fontSize: 22 }}>User Created Successfully!</h3>
+                            <h3 style={{ color: '#10b981', margin: '0 0 4px', fontSize: 22 }}>{isUpdatedUser ? 'User Details Updated Successfully!' : 'User Created Successfully!'}</h3>
                             <p style={{ color: '#94a3b8', margin: '0 0 20px', fontSize: 14 }}>Copy the message below and send to the user on WhatsApp</p>
 
                             <textarea
