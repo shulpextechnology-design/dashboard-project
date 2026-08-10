@@ -111,6 +111,11 @@ async function initDb() {
     try { await db.execute('ALTER TABLE users ADD COLUMN browser_id TEXT'); } catch (e) { }
     // Migration: Add current_session_id column (users)
     try { await db.execute('ALTER TABLE users ADD COLUMN current_session_id TEXT'); } catch (e) { }
+    // Migration: Add instance_id and created_at columns (sync_logs)
+    try { await db.execute('ALTER TABLE sync_logs ADD COLUMN instance_id INTEGER DEFAULT 0'); } catch (e) { }
+    try { await db.execute('ALTER TABLE sync_logs ADD COLUMN created_at TEXT'); } catch (e) { }
+    // Migration: Add fail_count column (sync_status)
+    try { await db.execute('ALTER TABLE sync_status ADD COLUMN fail_count INTEGER DEFAULT 0'); } catch (e) { }
 
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
@@ -1120,9 +1125,10 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
   async function logSync(instanceId, event, details) {
+    const now = new Date().toISOString();
     await dbExecuteWithRetry({
-      sql: 'INSERT INTO sync_logs (instance_id, event, details) VALUES (?, ?, ?)',
-      args: [instanceId, event, details]
+      sql: 'INSERT INTO sync_logs (instance_id, event, details, created_at) VALUES (?, ?, ?, ?)',
+      args: [instanceId, event, details, now]
     });
   }
 
