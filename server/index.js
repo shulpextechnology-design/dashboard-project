@@ -1124,6 +1124,11 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
+  const instanceJars = {
+    1: new CookieJar(),
+    2: new CookieJar()
+  };
+
   async function logSync(instanceId, event, details) {
     const now = new Date().toISOString();
     await dbExecuteWithRetry({
@@ -1135,8 +1140,9 @@ async function startBackgroundSync() {
   async function performSync(instanceId = 1) {
     const id = Number(instanceId);
 
-    // Create fresh CookieJar & client per performSync run to prevent session pollution across instances
-    const jar = new CookieJar();
+    // Reuse persistent CookieJar per instance to avoid unnecessary full re-logins on every cycle
+    if (!instanceJars[id]) instanceJars[id] = new CookieJar();
+    const jar = instanceJars[id];
     const client = wrapper(axios.create({
       jar,
       headers: {
@@ -1145,6 +1151,22 @@ async function startBackgroundSync() {
         'Accept-Language': 'en-US,en;q=0.9'
       }
     }));
+
+    // Helper for resilient GET/POST requests with auto-retry
+    async function requestWithRetry(reqFn, retries = 2) {
+      for (let i = 0; i < retries; i++) {
+        try {
+          return await reqFn();
+        } catch (err) {
+          if (i < retries - 1 && (err.code === 'ECONNABORTED' || err.message.includes('timeout'))) {
+            console.warn(`[BackgroundSync] Instance ${id} Network timeout retry ${i + 1}/${retries}...`);
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
 
     try {
       // LOG ATTEMPT
@@ -1210,11 +1232,11 @@ async function startBackgroundSync() {
       }
 
       const { source_url, login_url, amember_login, amember_pass } = config;
-      // Step A: Attempt direct extraction
+      // Step A: Attempt direct extraction with existing cookies
       console.log(`[BackgroundSync] Instance ${id} Step A: Checking session reuse at ${source_url}...`);
       let contentPageRes;
       try {
-        contentPageRes = await client.get(source_url, { timeout: 30000, responseType: 'text' });
+        contentPageRes = await requestWithRetry(() => client.get(source_url, { timeout: 45000, responseType: 'text' }));
       } catch (err) {
         console.warn(`[BackgroundSync] Instance ${id} Initial check timed out or failed: ${err.message}. Proceeding to login.`);
         contentPageRes = { data: '' }; // Force login flow
@@ -1228,8 +1250,10 @@ async function startBackgroundSync() {
       }
 
       if (!token) {
-        console.log(`[BackgroundSync] Instance ${id} Session expired. Performing full login flow...`);
-        const loginPageRes = await client.get(login_url, { timeout: 30000, responseType: 'text' });
+        console.log(`[BackgroundSync] Instance ${id} Session expired or new jar. Performing full login flow...`);
+        // Reset cookie jar on fresh login attempt
+        instanceJars[id] = new CookieJar();
+        const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 45000, responseType: 'text' }));
         const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
         const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
@@ -1240,16 +1264,16 @@ async function startBackgroundSync() {
         formData.append('amember_pass', amember_pass);
         formData.append('login_attempt_id', attemptId);
 
-        const loginRes = await client.post(login_url, formData.toString(), {
+        const loginRes = await requestWithRetry(() => client.post(login_url, formData.toString(), {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Origin': 'https://members.freelancerservice.site',
             'Referer': login_url
           },
           maxRedirects: 5,
-          timeout: 30000,
+          timeout: 45000,
           validateStatus: false // handle errors manually for better logging
-        });
+        }));
 
         console.log(`[BackgroundSync] Instance ${id} Login POST status: ${loginRes.status}`);
 
@@ -1265,7 +1289,7 @@ async function startBackgroundSync() {
 
         // --- Session Verification Step ---
         console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at /member...`);
-        const verifyRes = await client.get('https://members.freelancerservice.site/member', { timeout: 30000 });
+        const verifyRes = await requestWithRetry(() => client.get('https://members.freelancerservice.site/member', { timeout: 45000 }));
         const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
         const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
 
@@ -1281,11 +1305,11 @@ async function startBackgroundSync() {
 
         // --- Final Extraction ---
         console.log(`[BackgroundSync] Instance ${id} Step D: Fetching content with active session: ${source_url}`);
-        contentPageRes = await client.get(source_url, {
+        contentPageRes = await requestWithRetry(() => client.get(source_url, {
           headers: { 'Referer': 'https://members.freelancerservice.site/member' },
-          timeout: 30000,
+          timeout: 45000,
           responseType: 'text'
-        });
+        }));
 
         // Even more permissive regex: handles whitespace, optional var, and any quotes
         tokenMatch = contentPageRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
