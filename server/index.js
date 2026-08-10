@@ -1396,12 +1396,12 @@ async function startBackgroundSync() {
     setTimeout(() => performSync(2), 30000); // Stagger them on startup
   }, 5000);
 
-  // Schedule every 10 minutes
-  console.log('[BackgroundSync] Workers scheduled for every 10 minutes');
+  // Schedule every 3 minutes
+  console.log('[BackgroundSync] Workers scheduled for every 3 minutes');
   setInterval(() => {
     performSync(1);
-    setTimeout(() => performSync(2), 2.5 * 60 * 1000); // Offset instance 2 by 2.5 mins
-  }, 10 * 60 * 1000);
+    setTimeout(() => performSync(2), 90 * 1000); // Offset instance 2 by 90 seconds
+  }, 3 * 60 * 1000);
 }
 
 // --- Keep-Alive Pinger ---

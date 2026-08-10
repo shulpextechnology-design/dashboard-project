@@ -181,7 +181,7 @@ export default function AdminPage() {
             loadSyncStatus(selectedInstance);
             loadHeliumSession(selectedInstance);
             loadSyncLogs(selectedInstance);
-        }, 30000);
+        }, 5000);
         return () => clearInterval(interval);
     }, [selectedInstance]);
 
