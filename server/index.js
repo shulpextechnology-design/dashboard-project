@@ -1140,10 +1140,14 @@ app.get('/api/download/extension', authMiddleware, (req, res) => {
 
 // --- Fully Automated Background Sync (Source Site -> Dashboard) ---
 async function startBackgroundSync() {
-  const instanceJars = {
-    1: new CookieJar(),
-    2: new CookieJar()
-  };
+  const sharedJars = {};
+  function getCookieJar(loginUrl, loginEmail) {
+    const key = `${loginUrl || ''}|${loginEmail || ''}`.toLowerCase().trim();
+    if (!sharedJars[key]) {
+      sharedJars[key] = new CookieJar();
+    }
+    return sharedJars[key];
+  }
 
   async function logSync(instanceId, event, details) {
     const now = new Date().toISOString();
@@ -1155,18 +1159,6 @@ async function startBackgroundSync() {
 
   async function performSync(instanceId = 1) {
     const id = Number(instanceId);
-
-    // Reuse persistent CookieJar per instance to avoid unnecessary full re-logins on every cycle
-    if (!instanceJars[id]) instanceJars[id] = new CookieJar();
-    const jar = instanceJars[id];
-    const client = wrapper(axios.create({
-      jar,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9'
-      }
-    }));
 
     // Helper for resilient GET/POST requests with auto-retry
     async function requestWithRetry(reqFn, retries = 2) {
@@ -1248,11 +1240,22 @@ async function startBackgroundSync() {
       }
 
       const { source_url, login_url, amember_login, amember_pass } = config;
+      const jarKey = `${login_url || ''}|${amember_login || ''}`.toLowerCase().trim();
+      const jar = getCookieJar(login_url, amember_login);
+      const client = wrapper(axios.create({
+        jar,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      }));
+
       // Step A: Attempt direct extraction with existing cookies
       console.log(`[BackgroundSync] Instance ${id} Step A: Checking session reuse at ${source_url}...`);
       let contentPageRes;
       try {
-        contentPageRes = await requestWithRetry(() => client.get(source_url, { timeout: 45000, responseType: 'text' }));
+        contentPageRes = await requestWithRetry(() => client.get(source_url, { timeout: 25000, responseType: 'text' }));
       } catch (err) {
         console.warn(`[BackgroundSync] Instance ${id} Initial check timed out or failed: ${err.message}. Proceeding to login.`);
         contentPageRes = { data: '' }; // Force login flow
@@ -1267,9 +1270,18 @@ async function startBackgroundSync() {
 
       if (!token) {
         console.log(`[BackgroundSync] Instance ${id} Session expired or new jar. Performing full login flow...`);
-        // Reset cookie jar on fresh login attempt
-        instanceJars[id] = new CookieJar();
-        const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 45000, responseType: 'text' }));
+        // Reset domain cookie jar on fresh login attempt
+        sharedJars[jarKey] = new CookieJar();
+        const freshClient = wrapper(axios.create({
+          jar: sharedJars[jarKey],
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        }));
+
+        const loginPageRes = await requestWithRetry(() => freshClient.get(login_url, { timeout: 25000, responseType: 'text' }));
         const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
         const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
@@ -1280,14 +1292,14 @@ async function startBackgroundSync() {
         formData.append('amember_pass', amember_pass);
         formData.append('login_attempt_id', attemptId);
 
-        const loginRes = await requestWithRetry(() => client.post(login_url, formData.toString(), {
+        const loginRes = await requestWithRetry(() => freshClient.post(login_url, formData.toString(), {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://members.freelancerservice.site',
+            'Origin': new URL(login_url).origin,
             'Referer': login_url
           },
           maxRedirects: 5,
-          timeout: 45000,
+          timeout: 25000,
           validateStatus: false // handle errors manually for better logging
         }));
 
@@ -1304,30 +1316,23 @@ async function startBackgroundSync() {
         }
 
         // --- Session Verification Step ---
-        console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at /member...`);
-        const verifyRes = await requestWithRetry(() => client.get('https://members.freelancerservice.site/member', { timeout: 45000 }));
+        console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at ${login_url}...`);
+        const memberUrl = new URL('/member', login_url).href;
+        const verifyRes = await requestWithRetry(() => freshClient.get(memberUrl, { timeout: 25000 }));
         const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
         const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
 
         console.log(`[BackgroundSync] Instance ${id} Step C: Session active at /member: ${isLogged}`);
-
-        // Log this state to DB for remote debugging
         await logSync(id, 'Diagnostic', `Instance ${id} Session @ /member: ${isLogged}, Title: ${pageTitle}`);
-
-        if (!isLogged) {
-          console.error(`[BackgroundSync] Instance ${id} Login appeared successful but session is missing at /member.`);
-          // Don't throw yet, try the content page anyway in case /member is weird
-        }
 
         // --- Final Extraction ---
         console.log(`[BackgroundSync] Instance ${id} Step D: Fetching content with active session: ${source_url}`);
-        contentPageRes = await requestWithRetry(() => client.get(source_url, {
-          headers: { 'Referer': 'https://members.freelancerservice.site/member' },
-          timeout: 45000,
+        contentPageRes = await requestWithRetry(() => freshClient.get(source_url, {
+          headers: { 'Referer': memberUrl },
+          timeout: 25000,
           responseType: 'text'
         }));
 
-        // Even more permissive regex: handles whitespace, optional var, and any quotes
         tokenMatch = contentPageRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
         token = tokenMatch ? tokenMatch[1] : null;
 
@@ -1340,12 +1345,9 @@ async function startBackgroundSync() {
 
       if (!token) {
         console.error(`[BackgroundSync] Instance ${id} Final extraction failed. Status:`, contentPageRes.status);
-        console.error(`[BackgroundSync] Instance ${id} Page Sample (1000 chars):`, contentPageRes.data.substring(0, 1000));
-
         if (contentPageRes.data.includes('Cloudflare') || contentPageRes.data.includes('Access Denied')) {
           throw new Error(`[Instance ${id}] Blocked by security firewall (Cloudflare/Access Denied)`);
         }
-
         throw new Error(`[Instance ${id}] Failed to extract token after login (Regex mismatch)`);
       }
 
@@ -1371,7 +1373,6 @@ async function startBackgroundSync() {
       if (err.response) {
         console.error(`[BackgroundSync] ❌ Failed URL: ${err.config?.url}`);
         console.error(`[BackgroundSync] ❌ Status: ${err.response.status}`);
-        console.error(`[BackgroundSync] ❌ Response Data:`, typeof err.response.data === 'string' ? err.response.data.substring(0, 200) : 'Non-text response');
       }
 
       await dbExecuteWithRetry({
