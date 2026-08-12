@@ -1218,23 +1218,8 @@ async function startBackgroundSync() {
           });
         }
 
-        const firstInst = group.instances[0];
-        console.log(`[BackgroundSync] Testing existing session for group (${groupKey}) at ${firstInst.source_url}...`);
-        let testRes;
-        try {
-          testRes = await requestWithRetry(() => client.get(firstInst.source_url, { timeout: 25000, responseType: 'text' }));
-        } catch (e) {
-          testRes = { data: '' };
-        }
-
-        let isSessionValid = false;
-        if (testRes.data && (testRes.data.includes('copyText') || testRes.data.includes('brandseotools'))) {
-          isSessionValid = true;
-          console.log(`[BackgroundSync] Existing session valid for group (${groupKey})!`);
-        }
-
-        if (!isSessionValid) {
-          console.log(`[BackgroundSync] Session expired or new. Logging into ${login_url}...`);
+        async function loginGroup() {
+          console.log(`[BackgroundSync] Session expired or new for group (${groupKey}). Logging into ${login_url}...`);
           sharedJars[groupKey] = new CookieJar();
           client = wrapper(axios.create({
             jar: sharedJars[groupKey],
@@ -1279,18 +1264,41 @@ async function startBackgroundSync() {
           try {
             console.log(`[BackgroundSync] Extracting token for Instance ${id} from ${inst.source_url}...`);
             const memberUrl = new URL('/member', login_url).href;
-            const contentRes = await requestWithRetry(() => client.get(inst.source_url, {
-              headers: { 'Referer': memberUrl },
-              timeout: 25000,
-              responseType: 'text'
-            }));
+            
+            let contentRes;
+            try {
+              contentRes = await requestWithRetry(() => client.get(inst.source_url, {
+                headers: { 'Referer': memberUrl },
+                timeout: 25000,
+                responseType: 'text'
+              }));
+            } catch (e) {
+              contentRes = { data: '' };
+            }
 
-            let tokenMatch = contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
+            let tokenMatch = contentRes.data ? contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s) : null;
             let token = tokenMatch ? tokenMatch[1] : null;
 
-            if (!token) {
+            if (!token && contentRes.data) {
               const altMatch = contentRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
               token = altMatch ? altMatch[0] : null;
+            }
+
+            // If token is missing, perform a fresh login and retry once
+            if (!token) {
+              console.log(`[BackgroundSync] Token missing for Instance ${id}. Retrying with fresh login...`);
+              await loginGroup();
+              contentRes = await requestWithRetry(() => client.get(inst.source_url, {
+                headers: { 'Referer': memberUrl },
+                timeout: 25000,
+                responseType: 'text'
+              }));
+              tokenMatch = contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
+              token = tokenMatch ? tokenMatch[1] : null;
+              if (!token) {
+                const altMatch = contentRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
+                token = altMatch ? altMatch[0] : null;
+              }
             }
 
             if (!token) {
