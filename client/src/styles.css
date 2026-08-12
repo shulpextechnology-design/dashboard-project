@@ -11,6 +11,39 @@ body {
   color: #1f2933;
 }
 
+/* Instance Selector in Admin Header */ 
+.instance-selector-v2 { 
+  display: flex; 
+  background: #f1f5f9; 
+  padding: 4px; 
+  border-radius: 8px; 
+  gap: 4px; 
+  margin-right: 15px; 
+} 
+ 
+.instance-selector-v2 button { 
+  padding: 6px 16px; 
+  border: none; 
+  background: none; 
+  border-radius: 6px; 
+  font-size: 13px; 
+  font-weight: 600; 
+  color: #64748b; 
+  cursor: pointer; 
+  transition: all 0.2s ease; 
+} 
+ 
+.instance-selector-v2 button:hover { 
+  background: #e2e8f0; 
+  color: #1e293b; 
+} 
+ 
+.instance-selector-v2 button.active { 
+  background: #ffffff; 
+  color: #0b9d86; 
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08); 
+}
+
 a {
   color: #0b9d86;
   text-decoration: none;
