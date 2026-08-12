@@ -17,7 +17,7 @@ app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate c
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.3.6-unified-sync';
+const BACKEND_VERSION = 'v1.3.7-2min-sync';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -1335,9 +1335,9 @@ async function startBackgroundSync() {
   // Initial sync on startup
   setTimeout(() => performSync(), 5000);
 
-  // Schedule every 3 minutes
-  console.log('[BackgroundSync] Unified multi-instance worker scheduled every 3 minutes');
-  setInterval(() => performSync(), 3 * 60 * 1000);
+  // Schedule every 2 minutes for fast, regular updates
+  console.log('[BackgroundSync] Unified multi-instance worker scheduled every 2 minutes');
+  setInterval(() => performSync(), 2 * 60 * 1000);
 }
 
 // --- Keep-Alive Pinger ---
