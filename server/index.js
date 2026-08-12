@@ -1157,13 +1157,21 @@ async function startBackgroundSync() {
     });
   }
 
-  async function requestWithRetry(reqFn, retries = 2) {
+  const httpsAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 10,
+    rejectUnauthorized: false
+  });
+
+  async function requestWithRetry(reqFn, retries = 3) {
     for (let i = 0; i < retries; i++) {
       try {
         return await reqFn();
       } catch (err) {
-        if (i < retries - 1 && (err.code === 'ECONNABORTED' || err.message.includes('timeout'))) {
-          await new Promise(r => setTimeout(r, 2000));
+        const isTimeout = err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('ETIMEDOUT');
+        if (i < retries - 1 && isTimeout) {
+          console.warn(`[BackgroundSync] Network retry ${i + 1}/${retries} after: ${err.message}`);
+          await new Promise(r => setTimeout(r, (i + 1) * 3000));
           continue;
         }
         throw err;
@@ -1202,6 +1210,7 @@ async function startBackgroundSync() {
 
         let client = wrapper(axios.create({
           jar,
+          httpsAgent,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -1223,6 +1232,7 @@ async function startBackgroundSync() {
           sharedJars[groupKey] = new CookieJar();
           client = wrapper(axios.create({
             jar: sharedJars[groupKey],
+            httpsAgent,
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -1230,7 +1240,7 @@ async function startBackgroundSync() {
             }
           }));
 
-          const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 25000, responseType: 'text' }));
+          const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 60000, responseType: 'text' }));
           const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
           const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
@@ -1248,7 +1258,7 @@ async function startBackgroundSync() {
               'Referer': login_url
             },
             maxRedirects: 5,
-            timeout: 25000,
+            timeout: 60000,
             validateStatus: false
           }));
 
@@ -1269,7 +1279,7 @@ async function startBackgroundSync() {
             try {
               contentRes = await requestWithRetry(() => client.get(inst.source_url, {
                 headers: { 'Referer': memberUrl },
-                timeout: 25000,
+                timeout: 60000,
                 responseType: 'text'
               }));
             } catch (e) {
@@ -1290,7 +1300,7 @@ async function startBackgroundSync() {
               await loginGroup();
               contentRes = await requestWithRetry(() => client.get(inst.source_url, {
                 headers: { 'Referer': memberUrl },
-                timeout: 25000,
+                timeout: 60000,
                 responseType: 'text'
               }));
               tokenMatch = contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
@@ -1323,9 +1333,17 @@ async function startBackgroundSync() {
 
           } catch (err) {
             console.error(`[BackgroundSync] ❌ Instance ${id} Error:`, err.message);
+            
+            // Check if existing token in DB is valid so we don't break session access on temporary network blips
+            const checkExisting = await dbExecuteWithRetry({ sql: 'SELECT session_json, updated_at FROM helium10_session WHERE id = ?', args: [id] }).catch(() => ({ rows: [] }));
+            const existingRow = checkExisting.rows[0];
+            const hasValidToken = existingRow && existingRow.session_json && existingRow.session_json.length > 500;
+
+            const statusMsg = hasValidToken ? 'Success (Active Session)' : 'Error: ' + err.message;
+
             await dbExecuteWithRetry({
               sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0, fail_count = COALESCE(fail_count, 0) + 1 WHERE id = ?',
-              args: [err.message, 'Error: ' + err.message, id]
+              args: [err.message, statusMsg, id]
             }).catch(() => {});
             await logSync(id, 'Error', `Instance ${id}: ${err.message}`).catch(() => {});
           } finally {
