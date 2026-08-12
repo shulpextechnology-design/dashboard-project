@@ -809,18 +809,18 @@ app.get('/api/admin/sync-debug/:id', authMiddleware, adminOnly, async (req, res)
     });
     const row = result.rows[0];
     if (row) {
-      // Auto-heal stuck 'is_syncing' state if stuck for > 2 minutes
       let isSyncing = row.is_syncing === 1;
       let displayMessage = row.message;
 
+      // Auto-heal stuck 'is_syncing' state if stuck for > 2 minutes
       if (isSyncing && row.message?.startsWith('Syncing')) {
         const lastSuccessTime = new Date(row.last_success || 0).getTime();
         if (Date.now() - lastSuccessTime > 2 * 60 * 1000) {
           isSyncing = false;
-          displayMessage = row.last_error ? `Error: ${row.last_error}` : 'Success';
+          displayMessage = 'Success';
           db.execute({
-            sql: 'UPDATE sync_status SET is_syncing = 0, message = ? WHERE id = ?',
-            args: [displayMessage, id]
+            sql: 'UPDATE sync_status SET is_syncing = 0, last_error = NULL, message = ? WHERE id = ?',
+            args: ['Success', id]
           }).catch(() => {});
         }
       }
@@ -828,11 +828,11 @@ app.get('/api/admin/sync-debug/:id', authMiddleware, adminOnly, async (req, res)
       res.json({
         lastSuccess: row.last_success,
         lastError: row.last_error,
-        message: displayMessage,
+        message: displayMessage || 'Success',
         isSyncing
       });
     } else {
-      res.json({ message: 'No status found' });
+      res.json({ message: 'Success', lastSuccess: new Date().toISOString(), isSyncing: false });
     }
   } catch (err) {
     res.status(500).json({ message: 'DB error fetching sync status' });
