@@ -1,0 +1,54 @@
+=== 30-MINUTE LIVE SYNC MONITORING REPORT ===
+Started at: 10/8/2026, 4:14:40 pm
+
+[4:14:40 pm] --- CHECK #1 of 6 ---
+[4:14:41 pm] Instance 1: Status=Success | LastSuccess=2026-08-10T10:41:57.063Z | FailCount=0
+[4:14:41 pm] Instance 2: Status=Success | LastSuccess=2026-08-10T10:41:18.818Z | FailCount=0
+[4:14:41 pm] Latest 4 Logs:
+[4:14:41 pm]   - ID:405251 | Event:Success | Details:Synced at 8/10/2026, 10:41:57 AM | Time:2026-08-10 10:41:57
+[4:14:41 pm]   - ID:405250 | Event:Attempt | Details:Starting background sync cycle | Time:2026-08-10 10:41:56
+[4:14:41 pm]   - ID:405249 | Event:Success | Details:Synced at 10/8/2026, 4:11:19 pm | Time:2026-08-10 10:41:19
+[4:14:41 pm]   - ID:405248 | Event:Attempt | Details:Starting sync cycle for instance 2 | Time:2026-08-10 10:41:12
+[4:19:40 pm] --- CHECK #2 of 6 ---
+[4:19:41 pm] Instance 1: Status=Error: timeout of 30000ms exceeded | LastSuccess=2026-08-10T10:41:57.063Z | FailCount=1
+[4:19:41 pm] Instance 2: Status=Syncing Instance 2... | LastSuccess=2026-08-10T10:41:18.818Z | FailCount=0
+[4:19:41 pm] Latest 4 Logs:
+[4:19:41 pm]   - ID:405256 | Event:Attempt | Details:Starting background sync cycle for instance 2 | Time:2026-08-10 10:48:58
+[4:19:41 pm]   - ID:405255 | Event:Error | Details:Instance 1: timeout of 30000ms exceeded (https://members.freelancerservice.site/login) | Time:2026-08-10 10:47:31
+[4:19:41 pm]   - ID:405254 | Event:Skip | Details:Already syncing (active) | Time:2026-08-10 10:46:56
+[4:19:41 pm]   - ID:405253 | Event:Attempt | Details:Starting background sync cycle | Time:2026-08-10 10:46:56
+[4:24:40 pm] --- CHECK #3 of 6 ---
+[4:24:41 pm] Instance 1: Status=Success | LastSuccess=2026-08-10T10:51:58.429Z | FailCount=1
+[4:24:41 pm] Instance 2: Status=Error: timeout of 30000ms exceeded | LastSuccess=2026-08-10T10:41:18.818Z | FailCount=1
+[4:24:42 pm] Latest 4 Logs:
+[4:24:42 pm]   - ID:405259 | Event:Success | Details:Synced at 8/10/2026, 10:51:58 AM | Time:2026-08-10 10:51:58
+[4:24:42 pm]   - ID:405258 | Event:Attempt | Details:Starting background sync cycle | Time:2026-08-10 10:51:56
+[4:24:42 pm]   - ID:405257 | Event:Error | Details:Instance 2: timeout of 30000ms exceeded (https://members.freelancerservice.site/login) | Time:2026-08-10 10:50:01
+[4:24:42 pm]   - ID:405256 | Event:Attempt | Details:Starting background sync cycle for instance 2 | Time:2026-08-10 10:48:58
+[4:29:40 pm] --- CHECK #4 of 6 ---
+[4:29:41 pm] Instance 1: Status=Error: timeout of 30000ms exceeded | LastSuccess=2026-08-10T10:51:58.429Z | FailCount=2
+[4:29:41 pm] Instance 2: Status=Syncing Instance 2... | LastSuccess=2026-08-10T10:41:18.818Z | FailCount=1
+[4:29:41 pm] Latest 4 Logs:
+[4:29:41 pm]   - ID:405264 | Event:Attempt | Details:Starting background sync cycle for instance 2 | Time:2026-08-10 10:58:58
+[4:29:41 pm]   - ID:405263 | Event:Error | Details:Instance 1: timeout of 30000ms exceeded (https://members.freelancerservice.site/login) | Time:2026-08-10 10:57:31
+[4:29:41 pm]   - ID:405262 | Event:Skip | Details:Already syncing (active) | Time:2026-08-10 10:56:56
+[4:29:41 pm]   - ID:405261 | Event:Attempt | Details:Starting background sync cycle | Time:2026-08-10 10:56:56
+[4:34:40 pm] --- CHECK #5 of 6 ---
+[4:34:41 pm] Instance 1: Status=Success | LastSuccess=2026-08-10T11:01:57.457Z | FailCount=2
+[4:34:41 pm] Instance 2: Status=Error: timeout of 30000ms exceeded | LastSuccess=2026-08-10T10:41:18.818Z | FailCount=2
+[4:34:41 pm] Latest 4 Logs:
+[4:34:41 pm]   - ID:405267 | Event:Success | Details:Synced at 8/10/2026, 11:01:57 AM | Time:2026-08-10 11:01:58
+[4:34:41 pm]   - ID:405266 | Event:Attempt | Details:Starting background sync cycle | Time:2026-08-10 11:01:56
+[4:34:41 pm]   - ID:405265 | Event:Error | Details:Instance 2: timeout of 30000ms exceeded (https://members.freelancerservice.site/login) | Time:2026-08-10 11:00:01
+[4:34:41 pm]   - ID:405264 | Event:Attempt | Details:Starting background sync cycle for instance 2 | Time:2026-08-10 10:58:58
+[4:39:40 pm] --- CHECK #6 of 6 ---
+[4:39:41 pm] Instance 1: Status=Error: timeout of 30000ms exceeded | LastSuccess=2026-08-10T11:01:57.457Z | FailCount=3
+[4:39:41 pm] Instance 2: Status=Syncing Instance 2... | LastSuccess=2026-08-10T10:41:18.818Z | FailCount=2
+[4:39:41 pm] Latest 4 Logs:
+[4:39:41 pm]   - ID:405272 | Event:Attempt | Details:Starting background sync cycle for instance 2 | Time:2026-08-10 11:08:58
+[4:39:41 pm]   - ID:405271 | Event:Error | Details:Instance 1: timeout of 30000ms exceeded (https://members.freelancerservice.site/login) | Time:2026-08-10 11:07:31
+[4:39:41 pm]   - ID:405270 | Event:Skip | Details:Already syncing (active) | Time:2026-08-10 11:06:56
+[4:39:41 pm]   - ID:405269 | Event:Attempt | Details:Starting background sync cycle | Time:2026-08-10 11:06:56
+[4:39:41 pm] 
+=== 30-MINUTE MONITORING COMPLETE ===
+All checks finished successfully.
