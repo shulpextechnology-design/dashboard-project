@@ -17,7 +17,7 @@ app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate c
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret';
 const SYNC_SECRET = process.env.SYNC_SECRET || 'helium_sync_default_secret_9988';
-const BACKEND_VERSION = 'v1.3.5-js-fix';
+const BACKEND_VERSION = 'v1.3.6-unified-sync';
 
 // --- Database Initialization ---
 async function initDb() {
@@ -1157,123 +1157,51 @@ async function startBackgroundSync() {
     });
   }
 
-  async function performSync(instanceId = 1) {
-    const id = Number(instanceId);
-
-    // Helper for resilient GET/POST requests with auto-retry
-    async function requestWithRetry(reqFn, retries = 2) {
-      for (let i = 0; i < retries; i++) {
-        try {
-          return await reqFn();
-        } catch (err) {
-          if (i < retries - 1 && (err.code === 'ECONNABORTED' || err.message.includes('timeout'))) {
-            console.warn(`[BackgroundSync] Instance ${id} Network timeout retry ${i + 1}/${retries}...`);
-            await new Promise(r => setTimeout(r, 2000));
-            continue;
-          }
-          throw err;
+  async function requestWithRetry(reqFn, retries = 2) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await reqFn();
+      } catch (err) {
+        if (i < retries - 1 && (err.code === 'ECONNABORTED' || err.message.includes('timeout'))) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
         }
+        throw err;
       }
     }
+  }
+
+  async function performSync(targetInstanceId = null) {
+    console.log(`[BackgroundSync] Cycle started (Target: ${targetInstanceId ? 'Instance ' + targetInstanceId : 'All Instances'})...`);
 
     try {
-      // LOG ATTEMPT
-      await logSync(id, 'Attempt', `Starting background sync cycle for instance ${id}`);
+      const configRes = await dbExecuteWithRetry({ sql: 'SELECT * FROM sync_config ORDER BY id ASC' });
+      let configs = configRes.rows;
 
-      // Check if already syncing + Stale worker protection (if stuck for >15 mins)
-      const statusCheck = await dbExecuteWithRetry({
-        sql: 'SELECT is_syncing, last_success, message FROM sync_status WHERE id = ?',
-        args: [id]
-      });
-      const status = statusCheck.rows[0];
-
-      if (status?.is_syncing === 1) {
-        const lastUpdate = new Date(status.last_success || 0).getTime();
-        const nowTime = Date.now();
-        if (nowTime - lastUpdate > 15 * 60 * 1000) {
-          console.warn(`[BackgroundSync] Worker ${id} seems stale. Forcing reset.`);
-          await logSync(id, 'Recovery', `Forcing reset of stale is_syncing flag for instance ${id}`);
-        } else {
-          await logSync(id, 'Skip', `Instance ${id} already syncing (active)`);
-          return;
-        }
+      if (targetInstanceId) {
+        configs = configs.filter(c => Number(c.id) === Number(targetInstanceId));
       }
 
-      // Check if this instance has exceeded consecutive failure threshold — auto-recover
-      const failCheck = await dbExecuteWithRetry({
-        sql: 'SELECT fail_count FROM sync_status WHERE id = ?',
-        args: [id]
-      });
-      const failCount = failCheck.rows[0]?.fail_count || 0;
-      if (failCount >= 3) {
-        console.warn(`[BackgroundSync] Instance ${id} has failed ${failCount} times. Auto-recovering...`);
-        await dbExecuteWithRetry({
-          sql: 'UPDATE sync_status SET is_syncing = 0, fail_count = 0, message = ? WHERE id = ?',
-          args: [`Auto-recovery after ${failCount} failures`, id]
-        });
-        await logSync(id, 'Recovery', `Auto-reset is_syncing flag after ${failCount} consecutive failures`);
-        // Don't return — proceed with the sync attempt
-      }
-
-      // Set syncing state
-      await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET is_syncing = 1, message = ? WHERE id = ?',
-        args: [`Syncing Instance ${id}...`, id]
-      });
-
-      console.log(`[BackgroundSync] Starting automated synchronization for Instance ${id}...`);
-
-      // Fetch latest config from DB
-      const configResult = await dbExecuteWithRetry({
-        sql: 'SELECT * FROM sync_config WHERE id = ?',
-        args: [id]
-      });
-      const config = configResult.rows[0];
-
-      if (!config || !config.source_url || !config.login_url) {
-        console.log(`[BackgroundSync] Instance ${id} - Sync configuration not set up yet. Skipping auto-sync.`);
-        await dbExecuteWithRetry({
-          sql: 'UPDATE sync_status SET last_error = NULL, message = ?, is_syncing = 0 WHERE id = ?',
-          args: ['Configuration not set up', id]
-        });
+      if (!configs || configs.length === 0) {
+        console.log('[BackgroundSync] No sync configuration found.');
         return;
       }
 
-      const { source_url, login_url, amember_login, amember_pass } = config;
-      const jarKey = `${login_url || ''}|${amember_login || ''}`.toLowerCase().trim();
-      const jar = getCookieJar(login_url, amember_login);
-      const client = wrapper(axios.create({
-        jar,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9'
-        }
-      }));
-
-      // Step A: Attempt direct extraction with existing cookies
-      console.log(`[BackgroundSync] Instance ${id} Step A: Checking session reuse at ${source_url}...`);
-      let contentPageRes;
-      try {
-        contentPageRes = await requestWithRetry(() => client.get(source_url, { timeout: 25000, responseType: 'text' }));
-      } catch (err) {
-        console.warn(`[BackgroundSync] Instance ${id} Initial check timed out or failed: ${err.message}. Proceeding to login.`);
-        contentPageRes = { data: '' }; // Force login flow
-      }
-      let tokenMatch = contentPageRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
-      let token = tokenMatch ? tokenMatch[1] : null;
-
-      if (!token) {
-        const altMatch = contentPageRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
-        token = altMatch ? altMatch[0] : null;
+      const groups = {};
+      for (const cfg of configs) {
+        if (!cfg.source_url || !cfg.login_url) continue;
+        const key = `${cfg.login_url}|${cfg.amember_login}`.toLowerCase().trim();
+        if (!groups[key]) groups[key] = { config: cfg, instances: [] };
+        groups[key].instances.push(cfg);
       }
 
-      if (!token) {
-        console.log(`[BackgroundSync] Instance ${id} Session expired or new jar. Performing full login flow...`);
-        // Reset domain cookie jar on fresh login attempt
-        sharedJars[jarKey] = new CookieJar();
-        const freshClient = wrapper(axios.create({
-          jar: sharedJars[jarKey],
+      for (const groupKey of Object.keys(groups)) {
+        const group = groups[groupKey];
+        const { login_url, amember_login, amember_pass } = group.config;
+        const jar = getCookieJar(login_url, amember_login);
+
+        let client = wrapper(axios.create({
+          jar,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -1281,128 +1209,135 @@ async function startBackgroundSync() {
           }
         }));
 
-        const loginPageRes = await requestWithRetry(() => freshClient.get(login_url, { timeout: 25000, responseType: 'text' }));
-        const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
-        const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
-
-        if (!attemptId) throw new Error(`[Instance ${id}] Failed to find login_attempt_id`);
-
-        const formData = new URLSearchParams();
-        formData.append('amember_login', amember_login);
-        formData.append('amember_pass', amember_pass);
-        formData.append('login_attempt_id', attemptId);
-
-        const loginRes = await requestWithRetry(() => freshClient.post(login_url, formData.toString(), {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': new URL(login_url).origin,
-            'Referer': login_url
-          },
-          maxRedirects: 5,
-          timeout: 25000,
-          validateStatus: false // handle errors manually for better logging
-        }));
-
-        console.log(`[BackgroundSync] Instance ${id} Login POST status: ${loginRes.status}`);
-
-        if (loginRes.status >= 400) {
-          const sample = (typeof loginRes.data === 'string') ? loginRes.data.substring(0, 500) : 'Non-text response';
-          throw new Error(`Login failed with status ${loginRes.status}. Body: ${sample}`);
+        for (const inst of group.instances) {
+          const id = Number(inst.id);
+          await logSync(id, 'Attempt', `Starting background sync cycle for instance ${id}`);
+          await dbExecuteWithRetry({
+            sql: 'UPDATE sync_status SET is_syncing = 1, message = ? WHERE id = ?',
+            args: [`Syncing Instance ${id}...`, id]
+          });
         }
 
-        // Check if we are still on the login page (Login Failed case with 200 OK)
-        if (typeof loginRes.data === 'string' && (loginRes.data.includes('name="login_attempt_id"') || loginRes.data.includes('amember_login'))) {
-          throw new Error('Login failed (Credentials might be incorrect or account locked)');
+        const firstInst = group.instances[0];
+        console.log(`[BackgroundSync] Testing existing session for group (${groupKey}) at ${firstInst.source_url}...`);
+        let testRes;
+        try {
+          testRes = await requestWithRetry(() => client.get(firstInst.source_url, { timeout: 25000, responseType: 'text' }));
+        } catch (e) {
+          testRes = { data: '' };
         }
 
-        // --- Session Verification Step ---
-        console.log(`[BackgroundSync] Instance ${id} Step B: Verifying session at ${login_url}...`);
-        const memberUrl = new URL('/member', login_url).href;
-        const verifyRes = await requestWithRetry(() => freshClient.get(memberUrl, { timeout: 25000 }));
-        const isLogged = verifyRes.data.includes('logout') || verifyRes.data.includes('Logout');
-        const pageTitle = (verifyRes.data.match(/<title>(.*?)<\/title>/i) || [])[1] || 'Unknown';
+        let isSessionValid = false;
+        if (testRes.data && (testRes.data.includes('copyText') || testRes.data.includes('brandseotools'))) {
+          isSessionValid = true;
+          console.log(`[BackgroundSync] Existing session valid for group (${groupKey})!`);
+        }
 
-        console.log(`[BackgroundSync] Instance ${id} Step C: Session active at /member: ${isLogged}`);
-        await logSync(id, 'Diagnostic', `Instance ${id} Session @ /member: ${isLogged}, Title: ${pageTitle}`);
+        if (!isSessionValid) {
+          console.log(`[BackgroundSync] Session expired or new. Logging into ${login_url}...`);
+          sharedJars[groupKey] = new CookieJar();
+          client = wrapper(axios.create({
+            jar: sharedJars[groupKey],
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9'
+            }
+          }));
 
-        // --- Final Extraction ---
-        console.log(`[BackgroundSync] Instance ${id} Step D: Fetching content with active session: ${source_url}`);
-        contentPageRes = await requestWithRetry(() => freshClient.get(source_url, {
-          headers: { 'Referer': memberUrl },
-          timeout: 25000,
-          responseType: 'text'
-        }));
+          const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 25000, responseType: 'text' }));
+          const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
+          const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
-        tokenMatch = contentPageRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
-        token = tokenMatch ? tokenMatch[1] : null;
+          if (!attemptId) throw new Error(`Failed to find login_attempt_id on ${login_url}`);
 
-        if (!token) {
-          console.log(`[BackgroundSync] Instance ${id} First regex fail. Checking for raw token snippet...`);
-          const altMatch = contentPageRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
-          token = altMatch ? altMatch[0] : null;
+          const formData = new URLSearchParams();
+          formData.append('amember_login', amember_login);
+          formData.append('amember_pass', amember_pass);
+          formData.append('login_attempt_id', attemptId);
+
+          const loginRes = await requestWithRetry(() => client.post(login_url, formData.toString(), {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Origin': new URL(login_url).origin,
+              'Referer': login_url
+            },
+            maxRedirects: 5,
+            timeout: 25000,
+            validateStatus: false
+          }));
+
+          console.log(`[BackgroundSync] Login POST status: ${loginRes.status}`);
+
+          if (loginRes.status >= 400 || (typeof loginRes.data === 'string' && loginRes.data.includes('amember_login'))) {
+            throw new Error(`Login failed for ${amember_login} (Status ${loginRes.status})`);
+          }
+        }
+
+        for (const inst of group.instances) {
+          const id = Number(inst.id);
+          try {
+            console.log(`[BackgroundSync] Extracting token for Instance ${id} from ${inst.source_url}...`);
+            const memberUrl = new URL('/member', login_url).href;
+            const contentRes = await requestWithRetry(() => client.get(inst.source_url, {
+              headers: { 'Referer': memberUrl },
+              timeout: 25000,
+              responseType: 'text'
+            }));
+
+            let tokenMatch = contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
+            let token = tokenMatch ? tokenMatch[1] : null;
+
+            if (!token) {
+              const altMatch = contentRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
+              token = altMatch ? altMatch[0] : null;
+            }
+
+            if (!token) {
+              throw new Error(`[Instance ${id}] Token regex mismatch at ${inst.source_url}`);
+            }
+
+            const now = new Date().toISOString();
+            await dbExecuteWithRetry({
+              sql: `INSERT INTO helium10_session (id, session_json, updated_at) 
+                   VALUES (?, ?, ?) 
+                   ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
+              args: [id, token.trim(), now]
+            });
+
+            await dbExecuteWithRetry({
+              sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0, fail_count = 0 WHERE id = ?',
+              args: [now, 'Success', id]
+            });
+
+            await logSync(id, 'Success', `Instance ${id} Synced at ${new Date().toLocaleString()}`);
+            console.log(`[BackgroundSync] ✅ Instance ${id} successfully synced!`);
+
+          } catch (err) {
+            console.error(`[BackgroundSync] ❌ Instance ${id} Error:`, err.message);
+            await dbExecuteWithRetry({
+              sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0, fail_count = COALESCE(fail_count, 0) + 1 WHERE id = ?',
+              args: [err.message, 'Error: ' + err.message, id]
+            }).catch(() => {});
+            await logSync(id, 'Error', `Instance ${id}: ${err.message}`).catch(() => {});
+          } finally {
+            await db.execute({ sql: 'UPDATE sync_status SET is_syncing = 0 WHERE id = ?', args: [id] }).catch(() => {});
+          }
         }
       }
-
-      if (!token) {
-        console.error(`[BackgroundSync] Instance ${id} Final extraction failed. Status:`, contentPageRes.status);
-        if (contentPageRes.data.includes('Cloudflare') || contentPageRes.data.includes('Access Denied')) {
-          throw new Error(`[Instance ${id}] Blocked by security firewall (Cloudflare/Access Denied)`);
-        }
-        throw new Error(`[Instance ${id}] Failed to extract token after login (Regex mismatch)`);
-      }
-
-      // 4. Update Database
-      const now = new Date().toISOString();
-      await dbExecuteWithRetry({
-        sql: `INSERT INTO helium10_session (id, session_json, updated_at) 
-             VALUES (?, ?, ?) 
-             ON CONFLICT(id) DO UPDATE SET session_json = excluded.session_json, updated_at = excluded.updated_at`,
-        args: [id, token.trim(), now]
-      });
-
-      await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET last_success = ?, last_error = NULL, message = ?, is_syncing = 0, fail_count = 0 WHERE id = ?',
-        args: [now, 'Success', id]
-      });
-
-      await logSync(id, 'Success', `Instance ${id} Synced at ${new Date().toLocaleString()}`);
-
-      console.log(`[BackgroundSync] ✅ Successfully synced token for Instance ${id}`);
     } catch (err) {
-      console.error(`[BackgroundSync] ❌ Instance ${id} Sync error:`, err.message);
-      if (err.response) {
-        console.error(`[BackgroundSync] ❌ Failed URL: ${err.config?.url}`);
-        console.error(`[BackgroundSync] ❌ Status: ${err.response.status}`);
-      }
-
-      await dbExecuteWithRetry({
-        sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0, fail_count = COALESCE(fail_count, 0) + 1 WHERE id = ?',
-        args: [err.message, 'Error: ' + err.message, id]
-      }).catch(e => console.error(`[Fatal] Could not update sync_status for ${id} with error:`, e.message));
-
-      await logSync(id, 'Error', `Instance ${id}: ${err.message} (${err.config?.url || 'Unknown URL'})`).catch(() => {});
-    } finally {
-      // Ensure syncing flag is reset even on fatal database blowups if possible
-      try {
-        await db.execute({ sql: 'UPDATE sync_status SET is_syncing = 0 WHERE id = ?', args: [id] });
-      } catch (e) { /* total db failure */ }
+      console.error('[BackgroundSync] Cycle fatal error:', err.message);
     }
   }
 
   global.triggerBackgroundSync = performSync;
 
-  // Perform initial sync on startup for all instances
-  setTimeout(() => {
-    performSync(1);
-    setTimeout(() => performSync(2), 30000); // Stagger them on startup
-  }, 5000);
+  // Initial sync on startup
+  setTimeout(() => performSync(), 5000);
 
   // Schedule every 3 minutes
-  console.log('[BackgroundSync] Workers scheduled for every 3 minutes');
-  setInterval(() => {
-    performSync(1);
-    setTimeout(() => performSync(2), 90 * 1000); // Offset instance 2 by 90 seconds
-  }, 3 * 60 * 1000);
+  console.log('[BackgroundSync] Unified multi-instance worker scheduled every 3 minutes');
+  setInterval(() => performSync(), 3 * 60 * 1000);
 }
 
 // --- Keep-Alive Pinger ---
