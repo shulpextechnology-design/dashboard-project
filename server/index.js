@@ -368,19 +368,6 @@ app.post('/api/auth/login', async (req, res) => {
     // Extract browserId from request
     const { browserId } = req.body;
 
-    // --- ULTIMATE IP DETECTION & NORMALIZATION ---
-    function normalizeIp(ip) {
-      if (!ip || typeof ip !== 'string') return '0.0.0.0';
-      let clean = ip.trim();
-      if (clean.startsWith('::ffff:')) clean = clean.replace('::ffff:', '');
-      if (clean === '::1') return '127.0.0.1';
-      if (clean.includes('.') && clean.includes(':')) {
-        clean = clean.split(':')[0];
-      }
-      return clean;
-    }
-
-    // --- BROWSER ID NORMALIZATION ---
     function normalizeBID(bid) {
       if (!bid) return null;
       const s = String(bid).trim().toLowerCase();
@@ -388,33 +375,10 @@ app.post('/api/auth/login', async (req, res) => {
       return s;
     }
 
-    function getRawIp(req) {
-      return req.headers['cf-connecting-ip'] ||
-        req.headers['x-real-ip'] ||
-        (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) ||
-        req.ip ||
-        req.socket.remoteAddress;
-    }
-
-    const clientIp = normalizeIp(getRawIp(req));
-    const storedIp = normalizeIp(user.last_ip);
-
     const normalizedRequestBID = normalizeBID(browserId);
     const normalizedStoredBID = normalizeBID(user.browser_id);
 
-    console.log(`[Login Auth Check] User: ${user.username} | IP: ${clientIp} | BID: ${normalizedRequestBID}`);
-
-    if (!isAdmin && Number(user.is_logged_in) === 1) {
-      // Strict Permanent IP Lock
-      // If user is marked as logged in, they MUST be on the same IP.
-      // Time since last active does NOT matter.
-      if (clientIp !== storedIp) {
-        console.log(`[Login Blocked] User: ${user.username} is logged in on another IP. Current: ${clientIp} vs Stored: ${storedIp}`);
-        return res.status(403).json({ message: 'Authentication Error: You are already logged in on another device. Please contact your administrator to reset your session.' });
-      }
-
-      console.log(`[Re-login Allowed] User: ${user.username} re-logging on same IP (${clientIp}).`);
-    }
+    console.log(`[Login Auth Check] User: ${user.username} | BID: ${normalizedRequestBID}`);
 
     // If normal user, require active access and check expiry
     if (user.role === 'user') {
@@ -431,20 +395,13 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    // Set is_logged_in = 1 and update last_ip (Only if NOT admin for strictness, 
-    // but tracking status for admins is usually okay. However, to 'EXCLUDE' them 
-    // completely from this logic as requested, we'll only update for non-admins 
-    // or simply skip the blocking check above.)
-
-    // Update: We will update is_logged_in for everyone so they show as active, 
-    // but the blocking logic above STRICTLY bypasses admins.
     // Generate a fresh session ID for this login
     const newSessionId = Math.random().toString(36).substring(2, 15) + Date.now();
 
-    // Set is_logged_in = 1 and update last_ip, browser_id, session_id and last_active_at
+    // Set is_logged_in = 1 and update browser_id, session_id and last_active_at
     await db.execute({
-      sql: `UPDATE users SET is_logged_in = 1, last_ip = ?, browser_id = ?, current_session_id = ?, last_active_at = ? WHERE id = ?`,
-      args: [clientIp, browserId || (user.browser_id || null), newSessionId, new Date().toISOString(), user.id]
+      sql: `UPDATE users SET is_logged_in = 1, browser_id = ?, current_session_id = ?, last_active_at = ? WHERE id = ?`,
+      args: [browserId || (user.browser_id || null), newSessionId, new Date().toISOString(), user.id]
     });
 
     // Final check for user object before token creation to ensure role is passed correctly for admin
@@ -560,14 +517,13 @@ app.post('/api/admin/users', authMiddleware, adminOnly, async (req, res) => {
 
       // Update existing user record with new username/ID, password hash, expiration, mobile number, demo status, and reset session lock
       await db.execute({
-        sql: `UPDATE users 
-              SET username = ?, 
-                  password_hash = ?, 
-                  access_expires_at = ?, 
-                  mobile_number = ?, 
+        sql: `UPDATE users
+              SET username = ?,
+                  password_hash = ?,
+                  access_expires_at = ?,
+                  mobile_number = ?,
                   is_demo = ?,
                   is_logged_in = 0,
-                  last_ip = NULL,
                   browser_id = NULL,
                   current_session_id = NULL
               WHERE id = ?`,
@@ -689,7 +645,7 @@ app.post('/api/admin/users/:id/reset-session', authMiddleware, adminOnly, async 
   const { id } = req.params;
   try {
     const result = await db.execute({
-      sql: `UPDATE users SET is_logged_in = 0, last_ip = NULL, browser_id = NULL, current_session_id = NULL WHERE id = ?`,
+      sql: `UPDATE users SET is_logged_in = 0, browser_id = NULL, current_session_id = NULL WHERE id = ?`,
       args: [id]
     });
     res.json({ message: 'User session unlocked successfully', changes: result.rowsAffected });
