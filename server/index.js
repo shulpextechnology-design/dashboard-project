@@ -82,13 +82,14 @@ async function initDb() {
       )
     `);
 
-    // 6. App assets table (Extension zip meta)
+    // 6. App assets table (Extension zip meta + data)
     await db.execute(`
       CREATE TABLE IF NOT EXISTS app_assets (
         id TEXT PRIMARY KEY,
         filename TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        file_size INTEGER
+        file_size INTEGER,
+        file_data TEXT
       )
     `);
 
@@ -116,6 +117,8 @@ async function initDb() {
     try { await db.execute('ALTER TABLE sync_logs ADD COLUMN created_at TEXT'); } catch (e) { }
     // Migration: Add fail_count column (sync_status)
     try { await db.execute('ALTER TABLE sync_status ADD COLUMN fail_count INTEGER DEFAULT 0'); } catch (e) { }
+    // Migration: Add file_data column (app_assets)
+    try { await db.execute('ALTER TABLE app_assets ADD COLUMN file_data TEXT'); } catch (e) { }
 
     // Reset login status
     await db.execute('UPDATE users SET is_logged_in = 0');
@@ -931,23 +934,31 @@ app.post('/api/admin/upload-extension', authMiddleware, adminOnly, upload.single
 
   const now = new Date().toISOString();
   try {
+    // Read the file content and store it as base64 in the database
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const fileDataBase64 = fileBuffer.toString('base64');
+
     await db.execute({
-      sql: `INSERT INTO app_assets (id, filename, updated_at, file_size)
-           VALUES ('extension_zip', ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET filename = excluded.filename, updated_at = excluded.updated_at, file_size = excluded.file_size`,
-      args: ['extension.zip', now, req.file.size]
+      sql: `INSERT INTO app_assets (id, filename, updated_at, file_size, file_data)
+           VALUES ('extension_zip', ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET filename = excluded.filename, updated_at = excluded.updated_at, file_size = excluded.file_size, file_data = excluded.file_data`,
+      args: ['extension.zip', now, req.file.size, fileDataBase64]
     });
-    res.json({ message: 'Extension uploaded successfully', filename: req.file.filename, updatedAt: now });
+
+    // Clean up the local file after storing in DB
+    try { fs.unlinkSync(req.file.path); } catch (e) { console.warn('Could not delete temp file:', e.message); }
+
+    res.json({ message: 'Extension uploaded and saved to database successfully', filename: 'extension.zip', updatedAt: now, size: req.file.size });
   } catch (err) {
-    console.error('DB error recording asset upload:', err);
-    res.status(500).json({ message: 'File saved but failed to record metadata' });
+    console.error('Error uploading extension:', err);
+    res.status(500).json({ message: 'Failed to save extension to database: ' + (err.message || 'Unknown error') });
   }
 });
 
 app.get('/api/admin/extension-meta', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const result = await db.execute(`SELECT updated_at, file_size FROM app_assets WHERE id = 'extension_zip'`);
-    res.json(result.rows[0] || { updated_at: null, file_size: null });
+    const result = await db.execute(`SELECT id, filename, updated_at, file_size, CASE WHEN file_data IS NOT NULL THEN 1 ELSE 0 END as has_data FROM app_assets WHERE id = 'extension_zip'`);
+    res.json(result.rows[0] || { id: null, filename: null, updated_at: null, file_size: null, has_data: 0 });
   } catch (err) {
     res.status(500).json({ message: 'DB error' });
   }
@@ -1077,20 +1088,25 @@ app.put('/api/user/change-password', authMiddleware, async (req, res) => {
 });
 
 // Download local extension
-app.get('/api/download/extension', authMiddleware, (req, res) => {
-  const filePath = path.join(uploadsDir, 'extension.zip');
+app.get('/api/download/extension', authMiddleware, async (req, res) => {
+  try {
+    const result = await db.execute(`SELECT file_data, file_size, filename FROM app_assets WHERE id = 'extension_zip'`);
+    const row = result.rows[0];
 
-  if (fs.existsSync(filePath)) {
-    res.download(filePath, 'freelance_extension.zip', (err) => {
-      if (err) {
-        console.error('Download error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ message: 'Error downloading file' });
-        }
-      }
-    });
-  } else {
-    res.status(404).json({ message: 'Extension file not found on server. Admin needs to upload it first.' });
+    if (!row || !row.file_data) {
+      return res.status(404).json({ message: 'Extension file not found. Admin needs to upload it first.' });
+    }
+
+    const fileBuffer = Buffer.from(row.file_data, 'base64');
+    const downloadFilename = row.filename || 'freelance_extension.zip';
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadFilename}"`);
+    res.setHeader('Content-Length', row.file_size || fileBuffer.length);
+    res.send(fileBuffer);
+  } catch (err) {
+    console.error('Download error:', err);
+    res.status(500).json({ message: 'Error downloading file' });
   }
 });
 
