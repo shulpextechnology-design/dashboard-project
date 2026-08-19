@@ -1328,6 +1328,11 @@ async function startBackgroundSync() {
             const statusMsg = hasValidToken ? 'Success (Active Session)' : 'Error: ' + err.message;
 
             await dbExecuteWithRetry({
+              sql: 'UPDATE sync_status SET message = ?, last_success = ?, last_error = ?, is_syncing = 0 WHERE id = ?',
+              args: [statusMsg, new Date().toISOString(), err.message, id]
+            });
+
+            await dbExecuteWithRetry({
               sql: 'UPDATE sync_status SET last_error = ?, message = ?, is_syncing = 0, fail_count = COALESCE(fail_count, 0) + 1 WHERE id = ?',
               args: [err.message, statusMsg, id]
             }).catch(() => {});
@@ -1339,6 +1344,20 @@ async function startBackgroundSync() {
       }
     } catch (err) {
       console.error('[BackgroundSync] Cycle fatal error:', err.message);
+      const now = new Date().toISOString();
+      if (targetInstanceId) {
+        await dbExecuteWithRetry({
+          sql: 'UPDATE sync_status SET message = ?, last_success = ?, last_error = ?, is_syncing = 0 WHERE id = ?',
+          args: ['Error: ' + err.message, now, err.message, targetInstanceId]
+        }).catch(() => {});
+      } else {
+        for (const instId of [1, 2]) {
+          await dbExecuteWithRetry({
+            sql: 'UPDATE sync_status SET message = ?, last_success = ?, last_error = ?, is_syncing = 0 WHERE id = ?',
+            args: ['Error: ' + err.message, now, err.message, instId]
+          }).catch(() => {});
+        }
+      }
     }
   }
 
