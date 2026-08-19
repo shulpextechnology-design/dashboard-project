@@ -1083,11 +1083,22 @@ app.put('/api/user/change-password', authMiddleware, async (req, res) => {
 // Download local extension
 app.get('/api/download/extension', authMiddleware, async (req, res) => {
   try {
-    const result = await db.execute(`SELECT file_data, file_size, filename FROM app_assets WHERE id = 'extension_zip'`);
-    const row = result.rows[0];
+    let result = await db.execute(`SELECT file_data, file_size, filename FROM app_assets WHERE id = 'extension_zip'`);
+    let row = result.rows[0];
 
+    // Fallback: serve from filesystem if not in DB
     if (!row || !row.file_data) {
-      return res.status(404).json({ message: 'Extension file not found. Admin needs to upload it first.' });
+      const fsPath = path.join(__dirname, '..', 'uploads', 'extension.zip');
+      try {
+        const fsBuffer = fs.readFileSync(fsPath);
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', 'attachment; filename="Bharat_Tools_Hub_Extension.zip"');
+        res.setHeader('Content-Length', fsBuffer.length);
+        res.send(fsBuffer);
+        return;
+      } catch (fsErr) {
+        return res.status(404).json({ message: 'Extension file not found. Admin needs to upload it first.' });
+      }
     }
 
     const fileBuffer = Buffer.from(row.file_data, 'base64');
