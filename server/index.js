@@ -1209,12 +1209,14 @@ async function startBackgroundSync() {
           const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
           const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
-          if (!attemptId) throw new Error(`Failed to find login_attempt_id on ${login_url}`);
-
           const formData = new URLSearchParams();
           formData.append('amember_login', amember_login);
           formData.append('amember_pass', amember_pass);
-          formData.append('login_attempt_id', attemptId);
+          if (attemptId) {
+            formData.append('login_attempt_id', attemptId);
+          } else {
+            console.warn(`[BackgroundSync] login_attempt_id not found on ${login_url} - proceeding without it`);
+          }
 
           const loginRes = await requestWithRetry(() => client.post(login_url, formData.toString(), {
             headers: {
