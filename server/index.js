@@ -296,13 +296,6 @@ function authMiddleware(req, res, next) {
           return res.status(403).json({ message: 'Access expired' });
         }
 
-        // Session Displacement Check (The "Automatic Logout" part)
-        // If the session_id in the token doesn't match the one in DB, it means 
-        // a newer login has happened elsewhere (or on the same browser).
-        if (decoded.session_id && user.current_session_id && decoded.session_id !== user.current_session_id) {
-          console.log(`[Auth] Session displaced for ${decoded.username}. TokenSession[${decoded.session_id}] vs current[${user.current_session_id}]`);
-          return res.status(401).json({ message: 'Session expired - logged in elsewhere' });
-        }
 
         // Refresh last_active_at in background if more than 2 minutes passed
         const now = new Date();
