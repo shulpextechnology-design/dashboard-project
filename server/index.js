@@ -1184,15 +1184,15 @@ async function startBackgroundSync() {
         const { login_url, amember_login, amember_pass } = group.config;
         const jar = getCookieJar(login_url, amember_login);
 
-        let client = wrapper(axios.create({
+        let client = axios.create({
           jar,
-          httpsAgent,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9'
           }
-        }));
+        });
+        client = wrapper(client);
 
         for (const inst of group.instances) {
           const id = Number(inst.id);
@@ -1206,15 +1206,15 @@ async function startBackgroundSync() {
         async function loginGroup() {
           console.log(`[BackgroundSync] Session expired or new for group (${groupKey}). Logging into ${login_url}...`);
           sharedJars[groupKey] = new CookieJar();
-          client = wrapper(axios.create({
+          client = axios.create({
             jar: sharedJars[groupKey],
-            httpsAgent,
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
               'Accept-Language': 'en-US,en;q=0.9'
             }
-          }));
+          });
+          client = wrapper(client);
 
           const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 60000, responseType: 'text' }));
           const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
