@@ -1139,16 +1139,20 @@ async function startBackgroundSync() {
     rejectUnauthorized: false
   });
 
-  async function requestWithRetry(reqFn, retries = 3) {
+  async function requestWithRetry(reqFn, retries = 2) {
     for (let i = 0; i < retries; i++) {
       try {
         return await reqFn();
       } catch (err) {
         const isTimeout = err.code === 'ECONNABORTED' || err.message.includes('timeout') || err.message.includes('ETIMEDOUT');
-        if (i < retries - 1 && isTimeout) {
+        const isCloudflare = err.message.includes('Cloudflare') || err.message.includes('Access Denied') || err.message.includes('firewall');
+        if (i < retries - 1 && !isCloudflare) {
           console.warn(`[BackgroundSync] Network retry ${i + 1}/${retries} after: ${err.message}`);
-          await new Promise(r => setTimeout(r, (i + 1) * 3000));
+          await new Promise(r => setTimeout(r, (i + 1) * 2000));
           continue;
+        }
+        if (isCloudflare) {
+          console.warn(`[BackgroundSync] Cloudflare/block detected, skipping retries: ${err.message}`);
         }
         throw err;
       }
@@ -1216,7 +1220,7 @@ async function startBackgroundSync() {
           });
           client = wrapper(client);
 
-          const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 60000, responseType: 'text' }));
+          const loginPageRes = await requestWithRetry(() => client.get(login_url, { timeout: 15000, responseType: 'text' }));
           const attemptIdMatch = loginPageRes.data.match(/name="login_attempt_id" value="(.*?)"/);
           const attemptId = attemptIdMatch ? attemptIdMatch[1] : null;
 
@@ -1236,9 +1240,13 @@ async function startBackgroundSync() {
               'Referer': login_url
             },
             maxRedirects: 5,
-            timeout: 60000,
+            timeout: 15000,
             validateStatus: false
           }));
+
+          if (loginRes.status === 403 || loginRes.status === 429 || (loginRes.status >= 500 && loginRes.status < 600)) {
+            throw new Error(`[Instance ${id}] Blocked by security firewall (Cloudflare/Access Denied) (${loginRes.status})`);
+          }
 
           console.log(`[BackgroundSync] Login POST status: ${loginRes.status}`);
 
@@ -1257,7 +1265,7 @@ async function startBackgroundSync() {
             try {
               contentRes = await requestWithRetry(() => client.get(inst.source_url, {
                 headers: { 'Referer': memberUrl },
-                timeout: 60000,
+                timeout: 15000,
                 responseType: 'text'
               }));
             } catch (e) {
@@ -1278,7 +1286,7 @@ async function startBackgroundSync() {
               await loginGroup();
               contentRes = await requestWithRetry(() => client.get(inst.source_url, {
                 headers: { 'Referer': memberUrl },
-                timeout: 60000,
+                timeout: 15000,
                 responseType: 'text'
               }));
               tokenMatch = contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
