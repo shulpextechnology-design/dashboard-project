@@ -26,8 +26,8 @@ export default function Helium10Page() {
     useEffect(() => {
         setClicked(false);
         setCopyStatus('');
-        localStorage.removeItem('helium10_button_clicked');
-        document.documentElement.removeAttribute('data-helium10-clicked');
+        localStorage.removeItem('helium10_encrypted_session');
+        localStorage.removeItem('helium10_auto_trigger');
     }, [id]);
 
     useEffect(() => {
@@ -138,8 +138,8 @@ export default function Helium10Page() {
             if (copySuccess) {
                 setCopyStatus('success');
                 setClicked(true);
-                localStorage.setItem('helium10_button_clicked', 'true');
-                document.documentElement.setAttribute('data-helium10-clicked', 'true');
+                localStorage.setItem('helium10_encrypted_session', finalToken);
+                localStorage.setItem('helium10_auto_trigger', 'true');
 
                 window.postMessage({
                     type: 'HELIUM10_BUTTON_CLICKED',
@@ -171,8 +171,8 @@ export default function Helium10Page() {
                 <div className="helium-card-content">
                     <h3>Activate Premium Session</h3>
                     <p>
-                        To access our tools, first click the button below to copy the encrypted session token,
-                        then click on the extension icon in your browser toolbar.
+                        Click the button below to copy the encrypted session token.
+                        The extension will automatically detect it and redirect you to Helium 10.
                     </p>
 
                     <button
@@ -184,7 +184,7 @@ export default function Helium10Page() {
                         {clicked ? (
                             <>
                                 <CheckCircle2 size={20} />
-                                Just Click on Extension
+                                Redirecting to Helium 10...
                             </>
                         ) : (
                             <>
