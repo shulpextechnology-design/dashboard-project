@@ -321,12 +321,17 @@ export default function AdminPage() {
         formData.append('extension', extensionFile);
         setUploading(true);
         try {
-            const res = await axios.post('/api/admin/upload-extension', formData);
-            alert(res.data.message);
+            const res = await axios.post('/api/admin/upload-extension', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            alert(res.data.message || 'Extension uploaded successfully!');
             setLastUploaded(res.data.updatedAt);
             setExtensionFile(null);
+            const inputEl = document.getElementById('extension-file-input');
+            if (inputEl) inputEl.value = '';
         } catch (err) {
-            alert('Upload failed');
+            console.error('Extension upload error:', err);
+            alert(err.response?.data?.message || err.message || 'Upload failed');
         } finally {
             setUploading(false);
         }
@@ -645,8 +650,15 @@ export default function AdminPage() {
                             </section>
                             <section className="admin-card-v2">
                                 <div className="card-header-v2"><Upload size={20} /> <h2>Extension Deploy</h2></div>
-                                <input type="file" onChange={e => setExtensionFile(e.target.files[0])} />
-                                <button className="admin-submit-btn" onClick={handleExtensionUpload} disabled={uploading}>Upload Zip</button>
+                                <input 
+                                    id="extension-file-input"
+                                    type="file" 
+                                    accept=".zip,.rar,.crx" 
+                                    onChange={e => setExtensionFile(e.target.files[0])} 
+                                />
+                                <button className="admin-submit-btn" onClick={handleExtensionUpload} disabled={uploading}>
+                                    {uploading ? 'Uploading...' : 'Deploy Extension (.zip, .rar, .crx)'}
+                                </button>
                                 {lastUploaded && <p className="last-uploaded-meta-v2">Last: {new Date(lastUploaded).toLocaleString()}</p>}
                             </section>
 

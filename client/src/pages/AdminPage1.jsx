@@ -279,7 +279,7 @@ export default function AdminPage1() {
                             <input
                                 id="extension-file-input"
                                 type="file"
-                                accept=".zip"
+                                accept=".zip,.rar,.crx"
                                 className="file-input-v1"
                                 onChange={(e) => setExtensionFile(e.target.files[0])}
                             />
@@ -289,7 +289,7 @@ export default function AdminPage1() {
                                 disabled={uploading || !extensionFile}
                                 style={{ marginTop: '12px' }}
                             >
-                                {uploading ? 'Uploading...' : 'Upload Zip'}
+                                {uploading ? 'Uploading...' : 'Deploy Extension (.zip, .rar, .crx)'}
                             </button>
                             {lastUploaded && (
                                 <div className="last-uploaded-v1">

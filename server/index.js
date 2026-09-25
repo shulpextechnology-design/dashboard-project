@@ -275,17 +275,20 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
-    cb(null, 'extension.zip');
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, 'extension' + (ext || '.zip'));
   }
 });
 
 const upload = multer({
   storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
   fileFilter: (req, file, cb) => {
-    if (path.extname(file.originalname).toLowerCase() === '.zip') {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.zip' || ext === '.rar' || ext === '.crx') {
       cb(null, true);
     } else {
-      cb(new Error('Only .zip files are allowed!'));
+      cb(new Error('Only .zip, .rar, or .crx files are allowed!'));
     }
   }
 });
@@ -963,7 +966,15 @@ app.post('/api/helium10-sync/:id', async (req, res) => {
 });
 
 // --- Admin: upload extension ---
-app.post('/api/admin/upload-extension', authMiddleware, adminOnly, upload.single('extension'), async (req, res) => {
+app.post('/api/admin/upload-extension', authMiddleware, adminOnly, (req, res, next) => {
+  upload.single('extension')(req, res, (err) => {
+    if (err) {
+      console.warn('Extension upload multer error:', err.message);
+      return res.status(400).json({ message: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded' });
   }
@@ -973,18 +984,19 @@ app.post('/api/admin/upload-extension', authMiddleware, adminOnly, upload.single
     // Read the file content and store it as base64 in the database
     const fileBuffer = fs.readFileSync(req.file.path);
     const fileDataBase64 = fileBuffer.toString('base64');
+    const originalName = req.file.originalname || 'extension.zip';
 
     await db.execute({
       sql: `INSERT INTO app_assets (id, filename, updated_at, file_size, file_data)
            VALUES ('extension_zip', ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET filename = excluded.filename, updated_at = excluded.updated_at, file_size = excluded.file_size, file_data = excluded.file_data`,
-      args: ['extension.zip', now, req.file.size, fileDataBase64]
+      args: [originalName, now, req.file.size, fileDataBase64]
     });
 
     // Clean up the local file after storing in DB
     try { fs.unlinkSync(req.file.path); } catch (e) { console.warn('Could not delete temp file:', e.message); }
 
-    res.json({ message: 'Extension uploaded and saved to database successfully', filename: 'extension.zip', updatedAt: now, size: req.file.size });
+    res.json({ message: 'Extension uploaded and saved to database successfully', filename: originalName, updatedAt: now, size: req.file.size });
   } catch (err) {
     console.error('Error uploading extension:', err);
     res.status(500).json({ message: 'Failed to save extension to database: ' + (err.message || 'Unknown error') });
@@ -1145,9 +1157,11 @@ app.get('/api/download/extension', authMiddleware, async (req, res) => {
     }
 
     const fileBuffer = Buffer.from(row.file_data, 'base64');
-    const downloadFilename = row.filename || 'freelance_extension.zip';
+    const downloadFilename = row.filename || 'Bharat_Tools_Hub_Extension.zip';
+    const ext = path.extname(downloadFilename).toLowerCase();
+    const contentType = ext === '.rar' ? 'application/vnd.rar' : (ext === '.crx' ? 'application/x-chrome-extension' : 'application/zip');
 
-    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${downloadFilename}"`);
     res.setHeader('Content-Length', row.file_size || fileBuffer.length);
     res.send(fileBuffer);
