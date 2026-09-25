@@ -146,7 +146,7 @@ async function initDb() {
         await db.execute({
           sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
                VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [id, 'https://members.freelancerservice.site/content/p/id/173/', 'https://members.freelancerservice.site/login', 'vigneshsingaravelan@kyda.in', 'vigneshsingaravelan@kyda.in', new Date().toISOString()]
+          args: [id, 'https://tools.brandseotool.com/page/helium10', 'https://members.freelancerservice.site/login', 'kalbemehdi@gmail.com', 'kalbemehdi@gmail.com', new Date().toISOString()]
         });
       }
 

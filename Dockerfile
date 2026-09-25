@@ -1,18 +1,15 @@
-FROM node:18
-
-WORKDIR /app
-
-# Copy server dependencies and install
-COPY server/package*.json ./server/
-RUN cd server && npm install --omit=dev
-
-# Copy server source code
-COPY server/ ./server/
+FROM node:20-bookworm-slim
 
 WORKDIR /app/server
 
-# Hugging Face Spaces default port
+ENV NODE_ENV=production
 ENV PORT=7860
+
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund --loglevel verbose 2>&1 | tee /tmp/npm-ci.log
+
+COPY server/ ./
+
 EXPOSE 7860
 
 CMD ["node", "index.js"]

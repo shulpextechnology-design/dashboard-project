@@ -12,8 +12,36 @@ import {
 
 // These must match the extension's constants exactly
 const OMNIBOX_KEYWORD = 'brandseotools(created-by-premiumtools.shop)';
-const AES_KEY = 'brandseotools(created-by-premiumtools.shop)iLFB0yJSdidhLStH6tNcfXMqo7L8qkdofk';
+const AES_KEY = 'aZ9fG3kLpQ8rT5vN2sW4yH1uX0cB7eMx';
 const HELIUM10_URL = 'https://members.helium10.com/black-box/niche?accountId=1543300528';
+
+// Encrypt data with AES-GCM (matches extension's bg.js decryptAESGCM)
+async function encryptAESGCM(dataObj) {
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(AES_KEY),
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt']
+    );
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(JSON.stringify(dataObj));
+
+    const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        keyMaterial,
+        encoded
+    );
+
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encrypted), iv.length);
+
+    let binary = '';
+    for (let i = 0; i < combined.length; i++) binary += String.fromCharCode(combined[i]);
+    return btoa(binary);
+}
 
 export default function Helium10Page() {
     const { id } = useParams();
@@ -107,13 +135,7 @@ export default function Helium10Page() {
                 try {
                     const cookiesObj = JSON.parse(rawData);
                     if (!cookiesObj.url) cookiesObj.url = HELIUM10_URL;
-
-                    if (typeof window.CryptoJS === 'undefined') {
-                        alert('Encryption library not loaded. Please refresh the page.');
-                        return;
-                    }
-
-                    const encrypted = window.CryptoJS.AES.encrypt(JSON.stringify(cookiesObj), AES_KEY).toString();
+                    const encrypted = await encryptAESGCM(cookiesObj);
                     finalToken = OMNIBOX_KEYWORD + ' ' + encrypted;
                 } catch (e) {
                     const cleanPayload = rawData.replace(/\s+/g, '');

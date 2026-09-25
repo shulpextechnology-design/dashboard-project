@@ -1,3 +1,12 @@
+---
+title: Dashboard Server
+emoji: 🚀
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+---
+
 # Bharat Tools Hub Dashboard
 
 This project is a dashboard application with a client extensions management system.
