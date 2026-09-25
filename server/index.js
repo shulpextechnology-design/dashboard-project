@@ -10,7 +10,50 @@ const fs = require('fs');
 const axios = require('axios');
 const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
+const crypto = require('crypto');
 require('dotenv').config();
+
+const AES_KEY = 'aZ9fG3kLpQ8rT5vN2sW4yH1uX0cB7eMx';
+const OMNIBOX_KEYWORD = 'brandseotools(created-by-premiumtools.shop)';
+
+function decryptPHPUserData(encryptedBase64) {
+  const key = AES_KEY.padEnd(32, '\0');
+  const rawData = Buffer.from(encryptedBase64, 'base64');
+  const iv = rawData.subarray(0, 12);
+  const ciphertext = rawData.subarray(12, rawData.length - 16);
+  const tag = rawData.subarray(rawData.length - 16);
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(key), iv);
+  decipher.setAuthTag(tag);
+  let decrypted = decipher.update(ciphertext, null, 'utf8');
+  decrypted += decipher.final('utf8');
+
+  const userData = JSON.parse(decrypted);
+
+  const compressed = userData.c;
+  const diffLength = compressed.length - 26;
+  const insertInterval = Math.floor(diffLength / 26) + 1;
+
+  let cleanedData = "";
+  let skipIndex = 0;
+  for (let i = 0; i < compressed.length; i++) {
+    if ((i + 1) % insertInterval === 0 && skipIndex < 26) {
+      skipIndex++;
+      continue;
+    }
+    cleanedData += compressed[i];
+  }
+
+  let step1 = Buffer.from(cleanedData, 'base64').toString();
+  let step2 = Buffer.from(step1, 'base64').toString();
+  let step3 = Buffer.from(step2, 'base64').toString();
+  let cookiesRaw = Buffer.from(step3, 'base64').toString();
+
+  return {
+    url: userData.url,
+    cookiesRaw
+  };
+}
 
 const app = express();
 app.set('trust proxy', true); // Trust proxies like Vercel/Render for accurate client IP
@@ -146,7 +189,7 @@ async function initDb() {
         await db.execute({
           sql: `INSERT INTO sync_config (id, source_url, login_url, amember_login, amember_pass, updated_at)
                VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [id, 'https://tools.brandseotool.com/page/helium10', 'https://members.freelancerservice.site/login', 'kalbemehdi@gmail.com', 'kalbemehdi@gmail.com', new Date().toISOString()]
+          args: [id, 'https://tools.brandseotool.com/page/helium10', 'https://tools.brandseotool.com/member', 'kalbemehdi@gmail.com', 'kalbemehdi@gmail.com', new Date().toISOString()]
         });
       }
 
@@ -1272,15 +1315,59 @@ async function startBackgroundSync() {
               contentRes = { data: '' };
             }
 
-            let tokenMatch = contentRes.data ? contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s) : null;
-            let token = tokenMatch ? tokenMatch[1] : null;
+            let token = null;
 
+            // Strategy 1: Check old copyText variable in page HTML
+            let tokenMatch = contentRes.data ? contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s) : null;
+            if (tokenMatch) token = tokenMatch[1];
             if (!token && contentRes.data) {
               const altMatch = contentRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
-              token = altMatch ? altMatch[0] : null;
+              if (altMatch) token = altMatch[0];
             }
 
-            // If token is missing, perform a fresh login and retry once
+            // Strategy 2: New Direct Access /access endpoint
+            if (!token && contentRes.data) {
+              let accessUrl = null;
+              const accessBtnMatch = contentRes.data.match(/data-access=["']([^"']+)["'][^>]*data-fetch=["']([^"']+)["'][^>]*data-request=["']([^"']+)["']/i);
+              const origin = new URL(inst.source_url).origin;
+              if (accessBtnMatch) {
+                const access = accessBtnMatch[1];
+                const fetch = accessBtnMatch[2];
+                const request = accessBtnMatch[3];
+                const pageName = inst.source_url.split('/').pop();
+                accessUrl = `${origin}/access?access=${access}&request=${request}&data=${fetch}&page=${pageName}`;
+              } else if (contentRes.data.includes('extension_access')) {
+                accessUrl = `${origin}/access?access=helium10&request=extension&data=c&page=helium10`;
+              }
+
+              if (accessUrl) {
+                console.log(`[BackgroundSync] Fetching Direct Access URL for Instance ${id}: ${accessUrl}`);
+                const accessRes = await requestWithRetry(() => client.get(accessUrl, {
+                  headers: { 'Referer': inst.source_url },
+                  timeout: 15000,
+                  responseType: 'text'
+                }));
+                const textareaMatch = accessRes.data ? accessRes.data.match(/<textarea[^>]*class=["']user_data_base64["'][^>]*>([\s\S]*?)<\/textarea>/i) : null;
+                if (textareaMatch) {
+                  const encryptedBase64 = textareaMatch[1].trim();
+                  const session = decryptPHPUserData(encryptedBase64);
+                  const payloadObj = {
+                    url: session.url,
+                    cookies: session.cookiesRaw
+                  };
+                  const iv = crypto.randomBytes(12);
+                  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(AES_KEY), iv);
+                  let encrypted = cipher.update(JSON.stringify(payloadObj), 'utf8');
+                  encrypted = Buffer.concat([encrypted, cipher.final()]);
+                  const tag = cipher.getAuthTag();
+                  const combined = Buffer.concat([iv, encrypted, tag]);
+                  token = OMNIBOX_KEYWORD + ' ' + combined.toString('base64');
+                  console.log(`[BackgroundSync] ✅ Direct Access session extracted & encrypted for Instance ${id}!`);
+                }
+              }
+            }
+
+            // Retry with fresh login if still missing
             if (!token) {
               console.log(`[BackgroundSync] Token missing for Instance ${id}. Retrying with fresh login...`);
               await loginGroup();
@@ -1289,16 +1376,44 @@ async function startBackgroundSync() {
                 timeout: 15000,
                 responseType: 'text'
               }));
-              tokenMatch = contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s);
-              token = tokenMatch ? tokenMatch[1] : null;
-              if (!token) {
+              
+              tokenMatch = contentRes.data ? contentRes.data.match(/(?:var\s+)?copyText\s*=\s*["']\s*(brandseotools.*?)\s*["']/s) : null;
+              if (tokenMatch) token = tokenMatch[1];
+              if (!token && contentRes.data) {
                 const altMatch = contentRes.data.match(/brandseotools\(created-by-premiumtools\.shop\)[^"']+/);
-                token = altMatch ? altMatch[0] : null;
+                if (altMatch) token = altMatch[0];
+              }
+
+              if (!token && contentRes.data) {
+                const origin = new URL(inst.source_url).origin;
+                const accessUrl = `${origin}/access?access=helium10&request=extension&data=c&page=helium10`;
+                const accessRes = await requestWithRetry(() => client.get(accessUrl, {
+                  headers: { 'Referer': inst.source_url },
+                  timeout: 15000,
+                  responseType: 'text'
+                }));
+                const textareaMatch = accessRes.data ? accessRes.data.match(/<textarea[^>]*class=["']user_data_base64["'][^>]*>([\s\S]*?)<\/textarea>/i) : null;
+                if (textareaMatch) {
+                  const encryptedBase64 = textareaMatch[1].trim();
+                  const session = decryptPHPUserData(encryptedBase64);
+                  const payloadObj = {
+                    url: session.url,
+                    cookies: session.cookiesRaw
+                  };
+                  const iv = crypto.randomBytes(12);
+                  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(AES_KEY), iv);
+                  let encrypted = cipher.update(JSON.stringify(payloadObj), 'utf8');
+                  encrypted = Buffer.concat([encrypted, cipher.final()]);
+                  const tag = cipher.getAuthTag();
+                  const combined = Buffer.concat([iv, encrypted, tag]);
+                  token = OMNIBOX_KEYWORD + ' ' + combined.toString('base64');
+                  console.log(`[BackgroundSync] ✅ Direct Access session extracted on retry for Instance ${id}!`);
+                }
               }
             }
 
             if (!token) {
-              throw new Error(`[Instance ${id}] Token regex mismatch at ${inst.source_url}`);
+              throw new Error(`[Instance ${id}] Token could not be extracted from ${inst.source_url}`);
             }
 
             const now = new Date().toISOString();
